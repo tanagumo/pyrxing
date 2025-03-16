@@ -4,13 +4,30 @@ build-backend = "maturin"
 
 [project]
 name = "pyrxing"
+version = "0.1.1"
+description = "A barcode reader extension module using rxing (a ZXing port) and pyo3"
+authors = [{name = "Takanobu Nagumo", email = "nagumo5683@gmail.com"}]
+license = {text = "Apache-2.0"}
+keywords = ["barcode", "rxing"]
 requires-python = ">=3.8"
 classifiers = [
     "Programming Language :: Rust",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.8",
+    "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+
     "Programming Language :: Python :: Implementation :: CPython",
-    "Programming Language :: Python :: Implementation :: PyPy",
+
+    "License :: OSI Approved :: Apache Software License",
 ]
-dynamic = ["version"]
+
 [tool.maturin]
 features = ["pyo3/extension-module"]
 name = "pyrxing"
+
+[project.urls]
+"Homepage" = "https://github.com/tanagumo/pyrxing"
