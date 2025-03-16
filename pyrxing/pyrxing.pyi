@@ -1,7 +1,5 @@
 import sys
-from typing import Literal
-
-import PIL.Image
+from typing import Literal, Protocol
 
 
 if sys.version_info >= (3, 12):
@@ -54,6 +52,19 @@ else:
     ]
 
 
+class ImageProtocol(Protocol):
+    @property
+    def width(self) -> int: ...
+
+    @property
+    def height(self) -> int: ...
+
+    def tobytes(self) -> bytes:
+        """return pixel data as byte array"""
+
+    def convert(self, mode: str): ...
+
+
 class DecodingError(Exception): ...
 
 class ImageError(Exception): ...
@@ -76,5 +87,5 @@ class DecodeResult:
     def format(self) -> str: ...
 
 
-def read_barcode(image: str | PIL.Image.Image, *, formats: list[BarcodeFormat] | None = None) -> DecodeResult | None: ...
-def read_barcodes(image: str | PIL.Image.Image, *, formats: list[BarcodeFormat] | None = None) -> list[DecodeResult]: ...
+def read_barcode(image: str | ImageProtocol, *, formats: list[BarcodeFormat] | None = None) -> DecodeResult | None: ...
+def read_barcodes(image: str | ImageProtocol, *, formats: list[BarcodeFormat] | None = None) -> list[DecodeResult]: ...
