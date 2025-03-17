@@ -1,6 +1,38 @@
+use std::collections::HashSet;
+
 use image::GrayImage;
-use rxing::{helpers as rxing_helpers, Exceptions};
-use rxing::{BarcodeFormat, Point, RXingResult};
+use rxing::common::HybridBinarizer;
+use rxing::multi::{GenericMultipleBarcodeReader, MultipleBarcodeReader};
+use rxing::{
+    BinaryBitmap, DecodeHintType, DecodeHintValue, DecodeHints, DecodingHintDictionary, Exceptions,
+    Luma8LuminanceSource, MultiUseMultiFormatReader, Point, RXingResult, Reader,
+};
+
+pub use rxing::BarcodeFormat;
+
+static DEFAULT_FORMATS: &'static [BarcodeFormat] = &[
+    BarcodeFormat::AZTEC,
+    BarcodeFormat::CODABAR,
+    BarcodeFormat::CODE_39,
+    BarcodeFormat::CODE_93,
+    BarcodeFormat::CODE_128,
+    BarcodeFormat::DATA_MATRIX,
+    BarcodeFormat::EAN_8,
+    BarcodeFormat::EAN_13,
+    BarcodeFormat::ITF,
+    BarcodeFormat::MAXICODE,
+    BarcodeFormat::PDF_417,
+    BarcodeFormat::QR_CODE,
+    BarcodeFormat::MICRO_QR_CODE,
+    BarcodeFormat::RECTANGULAR_MICRO_QR_CODE,
+    BarcodeFormat::RSS_14,
+    BarcodeFormat::RSS_EXPANDED,
+    BarcodeFormat::TELEPEN,
+    BarcodeFormat::UPC_A,
+    BarcodeFormat::UPC_E,
+    BarcodeFormat::UPC_EAN_EXTENSION,
+    BarcodeFormat::DXFilmEdge,
+];
 
 #[derive(Debug)]
 pub struct DecodeResult {
@@ -20,40 +52,40 @@ impl DecodeResult {
         self.inner.getPoints()
     }
 
-    pub fn format(&self) -> &'static str {
-        match self.inner.getBarcodeFormat() {
-            BarcodeFormat::AZTEC => "aztec",
-            BarcodeFormat::CODABAR => "codabar",
-            BarcodeFormat::CODE_39 => "code 39",
-            BarcodeFormat::CODE_93 => "code 93",
-            BarcodeFormat::CODE_128 => "code 128",
-            BarcodeFormat::DATA_MATRIX => "datamatrix",
-            BarcodeFormat::EAN_8 => "ean 8",
-            BarcodeFormat::EAN_13 => "ean 13",
-            BarcodeFormat::ITF => "itf",
-            BarcodeFormat::MAXICODE => "maxicode",
-            BarcodeFormat::PDF_417 => "pdf 417",
-            BarcodeFormat::QR_CODE => "qrcode",
-            BarcodeFormat::MICRO_QR_CODE => "mqr",
-            BarcodeFormat::RECTANGULAR_MICRO_QR_CODE => "rmqr",
-            BarcodeFormat::RSS_14 => "rss 14",
-            BarcodeFormat::RSS_EXPANDED => "rss expanded",
-            BarcodeFormat::TELEPEN => "telepen",
-            BarcodeFormat::UPC_A => "upc a",
-            BarcodeFormat::UPC_E => "upc e",
-            BarcodeFormat::UPC_EAN_EXTENSION => "upc/ean extension",
-            BarcodeFormat::DXFilmEdge => "DXFilmEdge",
-            _ => "unknown",
-        }
+    pub fn format(&self) -> &BarcodeFormat {
+        self.inner.getBarcodeFormat()
     }
 }
 
-fn decode(image: GrayImage, multi: bool) -> anyhow::Result<Vec<DecodeResult>> {
+fn decode(
+    image: GrayImage,
+    multi: bool,
+    formats: &[BarcodeFormat],
+) -> anyhow::Result<Vec<DecodeResult>> {
     let width = image.width();
     let height = image.height();
+    let mut data = BinaryBitmap::new(HybridBinarizer::new(Luma8LuminanceSource::new(
+        image.to_vec(),
+        width,
+        height,
+    )));
+
+    let formats = if !formats.is_empty() {
+        formats
+    } else {
+        DEFAULT_FORMATS
+    };
+
+    let hints = DecodingHintDictionary::from([(
+        DecodeHintType::POSSIBLE_FORMATS,
+        DecodeHintValue::PossibleFormats(formats.iter().map(|v| *v).collect::<HashSet<_>>()),
+    )]);
+    let hints = DecodeHints::from(hints);
 
     if multi {
-        match rxing_helpers::detect_multiple_in_luma(image.into_vec(), width, height) {
+        let mut reader = GenericMultipleBarcodeReader::new(MultiUseMultiFormatReader::default());
+
+        match reader.decode_multiple_with_hints(&mut data, &hints) {
             Ok(results) => Ok(results
                 .into_iter()
                 .map(DecodeResult::new)
@@ -64,7 +96,8 @@ fn decode(image: GrayImage, multi: bool) -> anyhow::Result<Vec<DecodeResult>> {
             },
         }
     } else {
-        match rxing_helpers::detect_in_luma(image.into_vec(), width, height, None) {
+        let mut reader = MultiUseMultiFormatReader::default();
+        match reader.decode_with_hints(&mut data, &hints) {
             Ok(r) => Ok(vec![DecodeResult::new(r)]),
             Err(e) => match e {
                 Exceptions::NotFoundException(_) => Ok(vec![]),
@@ -74,10 +107,21 @@ fn decode(image: GrayImage, multi: bool) -> anyhow::Result<Vec<DecodeResult>> {
     }
 }
 
-pub fn decode_single(image: GrayImage) -> anyhow::Result<Vec<DecodeResult>> {
-    decode(image, false)
+pub fn decode_single(
+    image: GrayImage,
+    formats: &[BarcodeFormat],
+) -> anyhow::Result<Option<DecodeResult>> {
+    let mut decoded = decode(image, false, formats)?;
+    if decoded.is_empty() {
+        Ok(None)
+    } else {
+        Ok(Some(decoded.swap_remove(0)))
+    }
 }
 
-pub fn decode_multiple(image: GrayImage) -> anyhow::Result<Vec<DecodeResult>> {
-    decode(image, true)
+pub fn decode_multiple(
+    image: GrayImage,
+    formats: &[BarcodeFormat],
+) -> anyhow::Result<Vec<DecodeResult>> {
+    decode(image, true, formats)
 }

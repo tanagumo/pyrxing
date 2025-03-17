@@ -1,32 +1,32 @@
 use pyo3::exceptions::PyException;
 use pyo3::prelude::*;
 
-#[pyclass(extends = PyException, name = "DecodingError", module = "pyrxing")]
+#[pyclass(extends = PyException, name = "BarcodeDecodeError", module = "pyrxing")]
 #[derive(Debug)]
-pub(crate) struct PyDecodingError {
+pub(crate) struct PyBarcodeDecodeError {
     #[pyo3(get)]
     message: String,
 }
 
 #[pymethods]
-impl PyDecodingError {
+impl PyBarcodeDecodeError {
     #[new]
     fn new(message: String) -> Self {
-        PyDecodingError { message }
+        PyBarcodeDecodeError { message }
     }
 }
 
-impl std::fmt::Display for PyDecodingError {
+impl std::fmt::Display for PyBarcodeDecodeError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "DecodingError({})", self.message)
+        write!(f, "BarcodeDecodeError({})", self.message)
     }
 }
 
-impl std::error::Error for PyDecodingError {}
+impl std::error::Error for PyBarcodeDecodeError {}
 
-impl From<PyDecodingError> for PyErr {
-    fn from(e: PyDecodingError) -> Self {
-        PyErr::new::<PyDecodingError, _>(e.message)
+impl From<PyBarcodeDecodeError> for PyErr {
+    fn from(e: PyBarcodeDecodeError) -> Self {
+        PyErr::new::<PyBarcodeDecodeError, _>(e.message)
     }
 }
 
@@ -111,7 +111,7 @@ impl From<Error> for PyErr {
                 _ => e.into(),
             },
             Python(e) => e,
-            Decode(e) => PyErr::new::<PyDecodingError, _>(e.to_string()),
+            Decode(e) => PyErr::new::<PyBarcodeDecodeError, _>(e.to_string()),
         }
     }
 }
