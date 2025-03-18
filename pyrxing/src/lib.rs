@@ -62,23 +62,23 @@ fn get_image_source<'a, 'b>(obj: &'b Bound<'a, PyAny>) -> Result<ImageSource<'a,
     if type_name == "str" {
         Ok(ImageSource::Path(obj.extract::<String>()?))
     } else {
-        let mut implements_image_protocol = true;
+        let mut conform_to_image_protocol = true;
         if !obj.hasattr("mode")?
             || !obj.hasattr("width")?
             || !obj.hasattr("height")?
             || !obj.hasattr("tobytes")?
             || !obj.hasattr("convert")?
         {
-            implements_image_protocol = false;
+            conform_to_image_protocol = false;
         } else {
             if !obj.getattr("tobytes")?.is_callable() || !obj.getattr("convert")?.is_callable() {
-                implements_image_protocol = false;
+                conform_to_image_protocol = false;
             }
         }
-        if !implements_image_protocol {
+        if !conform_to_image_protocol {
             return Err(error::Error::Python(
                 pyo3::exceptions::PyValueError::new_err(format!(
-                    "value must be either str or comform to ImageProtocol"
+                    "value must be either str or conform to ImageProtocol"
                 )),
             ));
         }
