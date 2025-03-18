@@ -57,11 +57,12 @@ impl DecodeResult {
     }
 }
 
-fn decode(
-    image: GrayImage,
-    multi: bool,
-    formats: &[BarcodeFormat],
-) -> anyhow::Result<Vec<DecodeResult>> {
+enum Decoded {
+    Single(Option<DecodeResult>),
+    Multi(Vec<DecodeResult>),
+}
+
+fn decode(image: GrayImage, multi: bool, formats: &[BarcodeFormat]) -> anyhow::Result<Decoded> {
     let width = image.width();
     let height = image.height();
     let mut data = BinaryBitmap::new(HybridBinarizer::new(Luma8LuminanceSource::new(
@@ -86,21 +87,23 @@ fn decode(
         let mut reader = GenericMultipleBarcodeReader::new(MultiUseMultiFormatReader::default());
 
         match reader.decode_multiple_with_hints(&mut data, &hints) {
-            Ok(results) => Ok(results
-                .into_iter()
-                .map(DecodeResult::new)
-                .collect::<Vec<_>>()),
+            Ok(results) => Ok(Decoded::Multi(
+                results
+                    .into_iter()
+                    .map(DecodeResult::new)
+                    .collect::<Vec<_>>(),
+            )),
             Err(e) => match e {
-                Exceptions::NotFoundException(_) => Ok(vec![]),
+                Exceptions::NotFoundException(_) => Ok(Decoded::Multi(vec![])),
                 _ => Err(e.into()),
             },
         }
     } else {
         let mut reader = MultiUseMultiFormatReader::default();
         match reader.decode_with_hints(&mut data, &hints) {
-            Ok(r) => Ok(vec![DecodeResult::new(r)]),
+            Ok(r) => Ok(Decoded::Single(Some(DecodeResult::new(r)))),
             Err(e) => match e {
-                Exceptions::NotFoundException(_) => Ok(vec![]),
+                Exceptions::NotFoundException(_) => Ok(Decoded::Single(None)),
                 _ => Err(e.into()),
             },
         }
@@ -111,17 +114,18 @@ pub fn decode_single(
     image: GrayImage,
     formats: &[BarcodeFormat],
 ) -> anyhow::Result<Option<DecodeResult>> {
-    let mut decoded = decode(image, false, formats)?;
-    if decoded.is_empty() {
-        Ok(None)
-    } else {
-        Ok(Some(decoded.swap_remove(0)))
-    }
+    decode(image, false, formats).map(|decoded| match decoded {
+        Decoded::Single(r) => r,
+        _ => unreachable!(),
+    })
 }
 
 pub fn decode_multiple(
     image: GrayImage,
     formats: &[BarcodeFormat],
 ) -> anyhow::Result<Vec<DecodeResult>> {
-    decode(image, true, formats)
+    decode(image, true, formats).map(|decoded| match decoded {
+        Decoded::Multi(results) => results,
+        _ => unreachable!(),
+    })
 }
