@@ -1,0 +1,32 @@
+name: test
+
+on:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  pytest:
+    runs-on: ubuntu-22.04
+
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: 3.x
+      - name: copy README
+        run: |
+          cp README.md pyrxing/README.md
+      - name: Build wheels
+        uses: PyO3/maturin-action@v1
+        with:
+          working-directory: pyrxing
+          target: x86_64
+          args: --out dist
+          sccache: true
+      - name: install requirements
+        run: |
+          find pyrxing/dist -name '*.whl' | xargs pip install
+          cd pyrxing && pip install -r requirements.txt
+          pytest
