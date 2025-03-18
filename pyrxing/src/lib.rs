@@ -52,7 +52,7 @@ impl From<reader_core::DecodeResult> for DecodeResult {
 #[derive(Debug)]
 enum ImageSource<'a, 'b> {
     Path(String),
-    PILImage(&'b Bound<'a, PyAny>),
+    ImageProtocol(&'b Bound<'a, PyAny>),
 }
 
 fn get_image_source<'a, 'b>(obj: &'b Bound<'a, PyAny>) -> Result<ImageSource<'a, 'b>> {
@@ -62,19 +62,31 @@ fn get_image_source<'a, 'b>(obj: &'b Bound<'a, PyAny>) -> Result<ImageSource<'a,
     if type_name == "str" {
         Ok(ImageSource::Path(obj.extract::<String>()?))
     } else {
-        let module = type_obj.module()?;
-        if !module.to_str()?.starts_with("PIL.") {
+        let mut implements_image_protocol = true;
+        if !obj.hasattr("mode")?
+            || !obj.hasattr("width")?
+            || !obj.hasattr("height")?
+            || !obj.hasattr("tobytes")?
+            || !obj.hasattr("convert")?
+        {
+            implements_image_protocol = false;
+        } else {
+            if !obj.getattr("tobytes")?.is_callable() || !obj.getattr("convert")?.is_callable() {
+                implements_image_protocol = false;
+            }
+        }
+        if !implements_image_protocol {
             return Err(error::Error::Python(
                 pyo3::exceptions::PyValueError::new_err(format!(
-                    "value must be either str or PIL.Image.Image"
+                    "value must be either str or comform to ImageProtocol"
                 )),
             ));
         }
-        Ok(ImageSource::PILImage(obj))
+        Ok(ImageSource::ImageProtocol(obj))
     }
 }
 
-fn load_from_pil_image<'a, 'b>(obj: &'b Bound<'a, PyAny>) -> Result<GrayImage> {
+fn load_from_image<'a, 'b>(obj: &'b Bound<'a, PyAny>) -> Result<GrayImage> {
     let mode = obj.getattr("mode")?.extract::<PyBackedStr>()?;
     let width = obj.getattr("width")?.extract::<u32>()?;
     let height = obj.getattr("height")?.extract::<u32>()?;
@@ -108,7 +120,7 @@ fn gen_gray_image<'a, 'b>(image_source: ImageSource<'a, 'b>) -> Result<GrayImage
             let reader = ImageReader::new(buf_reader).with_guessed_format()?;
             Ok(reader.decode()?.to_luma8())
         }
-        ImageSource::PILImage(pyobj) => Ok(load_from_pil_image(pyobj)?),
+        ImageSource::ImageProtocol(pyobj) => Ok(load_from_image(pyobj)?),
     }
 }
 
