@@ -25,7 +25,8 @@ This package provides pre-built wheels for a wide range of platforms and Python 
    - Supports both Intel and Apple Silicon (arm64) Macs
 
 ### Python Versions
-- Supports Python 3.8 and later versions.
+- Supports Python 3.8 and later versions for linux.
+- Supports Python 3.11 and later versions for macos.
 
 ## Installation
 
