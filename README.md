@@ -12,6 +12,21 @@ While working, I used `pyzbar`, but it required installing the `zbar` library on
 - **Minimal API**: Provides only two public functions, `read_barcode` and `read_barcodes`, for simplicity.
 - **Type Hinting Support**: Includes `.pyi` files for type checking and IDE autocompletion.
 
+## Supported Environments
+
+This package provides pre-built wheels for a wide range of platforms and Python versions.
+
+### Platforms
+- **Linux**:  
+   - `manylinux` and `musllinux` compliant wheels  
+   - Supported architectures: `x86_64`, `aarch64`, `armv7`
+  
+- **macOS**:  
+   - Supports both Intel and Apple Silicon (arm64) Macs
+
+### Python Versions
+- Supports Python 3.8 and later versions.
+
 ## Installation
 
 Install the library using `pip`:
@@ -19,8 +34,6 @@ Install the library using `pip`:
 ```bash
 pip install pyrxing
 ```
-
-*Note: Wheel support for `musl` is under development.*
 
 ## Usage
 
