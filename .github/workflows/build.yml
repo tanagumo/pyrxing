@@ -1,8 +1,7 @@
 name: build
 
 env:
-  TARGET_PYTHON_FOR_LINUX: "python3.13 python3.12 python3.11 python3.10 python3.9 python3.8"
-  TARGET_PYTHON_FOR_MACOS: "python3.13 python3.12 python3.11"
+  TARGET_PYTHON: "python3.13 python3.12 python3.11 python3.10 python3.9 python3.8"
 
 on:
   push:
@@ -41,7 +40,7 @@ jobs:
         with:
           working-directory: pyrxing
           target: ${{ matrix.platform.target }}
-          args: --release --out dist --interpreter $TARGET_PYTHON_FOR_LINUX
+          args: --release --out dist --interpreter $TARGET_PYTHON
           sccache: ${{ !startsWith(github.ref, 'refs/tags/') }}
           manylinux: auto
       - name: Upload wheels
@@ -76,7 +75,7 @@ jobs:
         with:
           working-directory: pyrxing
           target: ${{ matrix.platform.target }}
-          args: --release --out dist --interpreter $TARGET_PYTHON_FOR_LINUX
+          args: --release --out dist --interpreter $TARGET_PYTHON
           sccache: ${{ !startsWith(github.ref, 'refs/tags/') }}
           manylinux: musllinux_1_2
       - name: Upload wheels
@@ -109,7 +108,7 @@ jobs:
         with:
           working-directory: pyrxing
           target: ${{ matrix.platform.target }}
-          args: --release --out dist --interpreter $TARGET_PYTHON_FOR_MACOS
+          args: --release --out dist --find-interpreter
           sccache: ${{ !startsWith(github.ref, 'refs/tags/') }}
       - name: Upload wheels
         uses: actions/upload-artifact@v4
