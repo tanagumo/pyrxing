@@ -83,7 +83,7 @@ You can also pass a compatible image object instead of a path.
 For full API and type hints, see `pyrxing.pyi` or use your IDE's autocomplete.
 
 ```python
-from typing import Literal, Protocol
+from typing import Literal, Protocol, Union
 
 # see https://docs.rs/rxing/0.7.1/rxing/enum.BarcodeFormat.html
 BarcodeFormat = Literal[
