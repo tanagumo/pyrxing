@@ -1,68 +1,92 @@
 # pyrxing
 
-**pyrxing** is a Python barcode reader library built using [rxing](https://github.com/rxing-core/rxing) (a Rust port of ZXing) and [PyO3](https://github.com/PyO3/pyo3). This library provides a simple and efficient barcode reading solution without requiring additional system dependencies.
+**pyrxing** is a fast, dependency-free Python barcode/QR code reader built using [rxing](https://github.com/rxing-core/rxing) — a high-performance Rust port of ZXing — via [PyO3](https://github.com/PyO3/pyo3).
 
-## Motivation
+This library offers efficient barcode scanning in pure Python environments, with pre-built native wheels — including full support for **Alpine Linux** and `musl`-based systems.
 
-While working, I used `pyzbar`, but it required installing the `zbar` library on the host system, and there were issues with reading certain QR codes. Searching for alternatives, I discovered `rxing`, a Rust port of ZXing, and decided to create a Python extension module using `PyO3`.
+---
 
-## Features
+## 🚀 Features
 
-- **Easy Installation**: No special setup is needed on the host system; simply install using `pip`.
-- **Minimal API**: Provides only two public functions, `read_barcode` and `read_barcodes`, for simplicity.
-- **Type Hinting Support**: Includes `.pyi` files for type checking and IDE autocompletion.
+* ⚡ **Fast and lightweight**: Powered by Rust for high-speed barcode decoding
+* 🐍 **Python-native API**: Simple interface with just two functions: `read_barcode` and `read_barcodes`
+* 📦 **No system dependencies**: No need for zbar, JRE, or any external libraries
+* 🏗️ **Alpine Linux compatible**: Pre-built `musllinux` wheels available
+* 🧠 **Type hinting & autocompletion**: Includes `.pyi` stub files
+* 🔒 **Safe and minimal**: No unnecessary features — just barcode reading
 
-## Supported Environments
+---
 
-This package provides pre-built wheels for a wide range of platforms and Python versions.
+## 📦 Installation
 
-### Platforms
-- **Linux**:  
-   - `manylinux` and `musllinux` compliant wheels  
-   - Supported architectures: `x86_64`, `aarch64`, `armv7`
-  
-- **macOS**:  
-   - Supports both Intel and Apple Silicon (arm64) Macs
+Install with pip:
 
-### Python Versions
-- Supports Python 3.8 and later versions for linux.
-- Supports Python 3.11 and later versions for macos.
-
-## Installation
-
-Install the library using `pip`:
-
-```bash
+```
 pip install pyrxing
 ```
 
-## Usage
+---
 
-Here are examples of how to use the library to read barcodes:
+## 🧪 Usage
 
 ```python
 from pyrxing import read_barcode, read_barcodes
 
-# Read a single barcode
-barcode = read_barcode(image_path)
+# Read a single barcode from an image path
+barcode = read_barcode("example.png")
 
-# Read multiple barcodes
-barcodes = read_barcodes(image_path)
+# Read multiple barcodes from an image
+barcodes = read_barcodes("example.png")
 
-# Read multiple barcodes that matches specified formats
-barcodes = read_barcodes(image_path, formats=['QR_CODE'])
-
+# Optionally filter by barcode format
+barcodes = read_barcodes("example.png", formats=['QR_CODE'])
 ```
 
-## API Reference
+You can also pass a compatible image object instead of a path.
 
-Below is the content of the `pyrxing.pyi` file, providing type hints and definitions:
+---
+
+## ✅ Supported Environments
+
+### Platforms
+
+* **Linux** (manylinux & musllinux wheels)
+
+  * Architectures: `x86_64`, `aarch64`, `armv7`
+* **macOS**
+
+  * Universal binaries for both Intel and Apple Silicon (arm64)
+
+### Python Versions
+
+* **Linux**: Python 3.8+
+* **macOS**: Python 3.11+
+
+---
+
+## 🛠️ Planned Features
+
+* [ ] More platform wheels (expanding support for other OS/Python combinations)
+* [ ] Additional barcode format configuration options
+
+---
+
+## 🚫 Not Planned
+
+* ❌ Barcode generation
+* ❌ Windows support (not currently planned)
+
+---
+
+## 📚 API Reference
+
+For full API and type hints, see `pyrxing.pyi` or use your IDE's autocomplete.
 
 ```python
 from typing import Literal, Protocol
 
 # see https://docs.rs/rxing/0.7.1/rxing/enum.BarcodeFormat.html
-type BarcodeFormat = Literal[
+BarcodeFormat = Literal[
     'AZTEC',
     'CODABAR',
     'CODE_39',
@@ -86,6 +110,7 @@ type BarcodeFormat = Literal[
     'DX_FILM_EDGE',
 ]
 
+
 class ImageProtocol(Protocol):
     @property
     def width(self) -> int: ...
@@ -94,11 +119,13 @@ class ImageProtocol(Protocol):
     def height(self) -> int: ...
 
     def tobytes(self) -> bytes:
-        """Return pixel data as a byte array."""
+        """return pixel data as byte array"""
 
     def convert(self, mode: str): ...
 
+
 class BarcodeDecodeError(Exception): ...
+
 class ImageError(Exception): ...
 
 class Point:
@@ -118,20 +145,14 @@ class DecodeResult:
     @property
     def format(self) -> str: ...
 
-def read_barcode(image: str | ImageProtocol, *, formats: list[BarcodeFormat] | None = None) -> DecodeResult | None: ...
 
-def read_barcodes(image: str | ImageProtocol, *, formats: list[BarcodeFormat] | None = None) -> list[DecodeResult]: ...
+def read_barcode(image: Union[str, ImageProtocol], *, formats: Union[list[BarcodeFormat], None] = None) -> Union[DecodeResult, None]: ...
+def read_barcodes(image: Union[str, ImageProtocol], *, formats: Union[list[BarcodeFormat], None] = None) -> list[DecodeResult]: ...
 ```
 
-## Planned Features
-- **Expanded Platform Support**: This project currently provides only ARM-based macOS wheels and plans to create wheels compliant with manylinux and musllinux standards in the future..
+---
 
-## Features Not Planned
-- **Barcode Generation**: The library will not include barcode generation functionality, as it focuses solely on barcode decoding.
-- **Windows Support**: Currently, there are no plans to support Windows operating systems.
+## 📌 Notes
 
-## rxing Track
-Currently tracking rxing 0.7.1
-
-## Copyright notes
-The original license / copyright remains with the rxing developers.
+* Tracking `rxing` version: **0.7.1**
+* Copyright for decoding logic belongs to the original [rxing](https://github.com/rxing-core/rxing) authors.
