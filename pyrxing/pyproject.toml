@@ -4,7 +4,7 @@ build-backend = "maturin"
 
 [project]
 name = "pyrxing"
-version = "0.1.4"
+version = "0.1.5"
 description = "A barcode reader extension module using rxing (a ZXing port) and pyo3"
 authors = [{name = "Takanobu Nagumo", email = "nagumo5683@gmail.com"}]
 readme = "README.md"
