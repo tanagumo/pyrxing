@@ -1,7 +1,7 @@
 name: build
 
 env:
-  TARGET_PYTHON: "python3.13 python3.12 python3.11 python3.10 python3.9 python3.8"
+  TARGET_PYTHON: "python3.13 python3.12 python3.11"
 
 on:
   push:
@@ -35,6 +35,11 @@ jobs:
       - name: copy README.md
         run: |
           cp README.md pyrxing
+      - name: Cache Rust dependencies
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: pyrxing
+          key: ${{ runner.os }}-${{ matrix.platform.target }}
       - name: Build wheels
         uses: PyO3/maturin-action@v1
         with:
@@ -70,6 +75,11 @@ jobs:
       - name: copy README.md
         run: |
           cp README.md pyrxing
+      - name: Cache Rust dependencies
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: pyrxing
+          key: ${{ runner.os }}-${{ matrix.platform.target }}
       - name: Build wheels
         uses: PyO3/maturin-action@v1
         with:
@@ -103,6 +113,11 @@ jobs:
       - name: copy README.md
         run: |
           cp README.md pyrxing
+      - name: Cache Rust dependencies
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: pyrxing
+          key: ${{ runner.os }}-${{ matrix.platform.target }}
       - name: Build wheels
         uses: PyO3/maturin-action@v1
         with:
@@ -135,6 +150,11 @@ jobs:
       - name: copy README.md
         run: |
           cp README.md pyrxing
+      - name: Cache Rust dependencies
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: pyrxing
+          key: ${{ runner.os }}-${{ matrix.platform.target }}
       - name: Build wheels
         uses: PyO3/maturin-action@v1
         with:
