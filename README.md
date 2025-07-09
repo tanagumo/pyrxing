@@ -61,7 +61,7 @@ You can also pass a compatible image object instead of a path.
 
 * **Linux**: Python 3.8+
 * **macOS**: Python 3.11+
-* **Windows**: Python 3.8+
+* **Windows**: Python 3.9+
 
 ---
 
