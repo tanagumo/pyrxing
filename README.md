@@ -11,7 +11,7 @@ This library offers efficient barcode scanning in pure Python environments, with
 * ⚡ **Fast and lightweight**: Powered by Rust for high-speed barcode decoding
 * 🐍 **Python-native API**: Simple interface with just two functions: `read_barcode` and `read_barcodes`
 * 📦 **No system dependencies**: No need for zbar, JRE, or any external libraries
-* 🏗️ **Alpine Linux compatible**: Pre-built `musllinux` wheels available
+* 🏗 **Alpine Linux compatible**: Pre-built `musllinux` wheels available
 * 🧠 **Type hinting & autocompletion**: Includes `.pyi` stub files
 * 🔒 **Safe and minimal**: No unnecessary features — just barcode reading
 
@@ -51,20 +51,21 @@ You can also pass a compatible image object instead of a path.
 ### Platforms
 
 * **Linux** (manylinux & musllinux wheels)
-
   * Architectures: `x86_64`, `aarch64`, `armv7`
 * **macOS**
-
   * Universal binaries for both Intel and Apple Silicon (arm64)
+* **Windows**
+  * Architectures: `x64`, `x86`
 
 ### Python Versions
 
 * **Linux**: Python 3.8+
 * **macOS**: Python 3.11+
+* **Windows**: Python 3.8+
 
 ---
 
-## 🛠️ Planned Features
+## 🛠 Planned Features
 
 * [ ] More platform wheels (expanding support for other OS/Python combinations)
 * [ ] Additional barcode format configuration options
@@ -74,7 +75,6 @@ You can also pass a compatible image object instead of a path.
 ## 🚫 Not Planned
 
 * ❌ Barcode generation
-* ❌ Windows support (not currently planned)
 
 ---
 
