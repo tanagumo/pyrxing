@@ -1,6 +1,12 @@
 [workspace]
-resolver = "3"
 members = [ "pyrxing", "reader_core"]
+resolver = "3"
+
+[workspace.package]
+version = "0.2.0"
+authors = ["Takanobu Nagumo <nagumo5683@gmail.com>"]
+license = "MIT"
+edition = "2024"
 
 [profile.release]
 opt-level = 3
