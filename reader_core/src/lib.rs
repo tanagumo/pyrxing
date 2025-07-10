@@ -4,35 +4,11 @@ use image::GrayImage;
 use rxing::common::HybridBinarizer;
 use rxing::multi::{GenericMultipleBarcodeReader, MultipleBarcodeReader};
 use rxing::{
-    BinaryBitmap, DecodeHintType, DecodeHintValue, DecodeHints, DecodingHintDictionary, Exceptions,
-    Luma8LuminanceSource, MultiUseMultiFormatReader, Point, RXingResult, Reader,
+    Binarizer, BinaryBitmap, DecodeHints, Exceptions, Luma8LuminanceSource,
+    MultiUseMultiFormatReader, Point, RXingResult, Reader,
 };
 
 pub use rxing::BarcodeFormat;
-
-static DEFAULT_FORMATS: &'static [BarcodeFormat] = &[
-    BarcodeFormat::AZTEC,
-    BarcodeFormat::CODABAR,
-    BarcodeFormat::CODE_39,
-    BarcodeFormat::CODE_93,
-    BarcodeFormat::CODE_128,
-    BarcodeFormat::DATA_MATRIX,
-    BarcodeFormat::EAN_8,
-    BarcodeFormat::EAN_13,
-    BarcodeFormat::ITF,
-    BarcodeFormat::MAXICODE,
-    BarcodeFormat::PDF_417,
-    BarcodeFormat::QR_CODE,
-    BarcodeFormat::MICRO_QR_CODE,
-    BarcodeFormat::RECTANGULAR_MICRO_QR_CODE,
-    BarcodeFormat::RSS_14,
-    BarcodeFormat::RSS_EXPANDED,
-    BarcodeFormat::TELEPEN,
-    BarcodeFormat::UPC_A,
-    BarcodeFormat::UPC_E,
-    BarcodeFormat::UPC_EAN_EXTENSION,
-    BarcodeFormat::DXFilmEdge,
-];
 
 #[derive(Debug)]
 pub struct DecodeResult {
@@ -62,31 +38,125 @@ enum Decoded {
     Multi(Vec<DecodeResult>),
 }
 
+trait Decoder {
+    fn decode<B>(
+        &self,
+        binarizer: B,
+        hints: &mut DecodeHints,
+    ) -> rxing::common::Result<RXingResult>
+    where
+        B: Binarizer,
+        B::Source: Clone;
+
+    fn decode_multiple<B>(
+        &self,
+        binarizer: B,
+        hints: &mut DecodeHints,
+    ) -> rxing::common::Result<Vec<RXingResult>>
+    where
+        B: Binarizer,
+        B::Source: Clone;
+}
+
+struct AdaptiveDecoder;
+
+impl AdaptiveDecoder {
+    fn decode<F, B, T>(
+        decode_func: F,
+        binarizer: B,
+        hints: &DecodeHints,
+    ) -> rxing::common::Result<T>
+    where
+        F: Fn(BinaryBitmap<B>, &DecodeHints) -> rxing::common::Result<T>,
+        B: Binarizer,
+        B::Source: Clone,
+    {
+        let bitmap = BinaryBitmap::new(binarizer);
+        decode_func(bitmap, hints)
+    }
+}
+
+impl Decoder for AdaptiveDecoder {
+    fn decode<B>(&self, binarizer: B, hints: &mut DecodeHints) -> rxing::common::Result<RXingResult>
+    where
+        B: Binarizer,
+        B::Source: Clone,
+    {
+        let cloned_source = binarizer.get_luminance_source().clone();
+        let cloned_binarizer = binarizer.create_binarizer(cloned_source);
+
+        let decode_func = |mut data, hints: &DecodeHints| {
+            let mut reader = MultiUseMultiFormatReader::default();
+            reader.decode_with_hints(&mut data, &hints)
+        };
+
+        let original_try_harder = hints.TryHarder;
+        hints.TryHarder = None;
+        match AdaptiveDecoder::decode(decode_func, binarizer, hints) {
+            ok @ Ok(_) => ok,
+            _ => {
+                hints.TryHarder = Some(true);
+                match AdaptiveDecoder::decode(decode_func, cloned_binarizer, hints) {
+                    ok @ Ok(_) => ok,
+                    err @ Err(_) => {
+                        hints.TryHarder = original_try_harder;
+                        err
+                    }
+                }
+            }
+        }
+    }
+
+    fn decode_multiple<B>(
+        &self,
+        binarizer: B,
+        hints: &mut DecodeHints,
+    ) -> rxing::common::Result<Vec<RXingResult>>
+    where
+        B: Binarizer,
+        B::Source: Clone,
+    {
+        let cloned_source = binarizer.get_luminance_source().clone();
+        let cloned_binarizer = binarizer.create_binarizer(cloned_source);
+
+        let decode_func = |mut data, hints: &DecodeHints| {
+            let mut reader =
+                GenericMultipleBarcodeReader::new(MultiUseMultiFormatReader::default());
+            reader.decode_multiple_with_hints(&mut data, &hints)
+        };
+
+        let original_try_harder = hints.TryHarder;
+        hints.TryHarder = None;
+        match AdaptiveDecoder::decode(decode_func, binarizer, hints) {
+            ok @ Ok(_) => ok,
+            _ => {
+                hints.TryHarder = Some(true);
+                match AdaptiveDecoder::decode(decode_func, cloned_binarizer, hints) {
+                    ok @ Ok(_) => ok,
+                    err @ Err(_) => {
+                        hints.TryHarder = original_try_harder;
+                        err
+                    }
+                }
+            }
+        }
+    }
+}
+
 fn decode(image: GrayImage, multi: bool, formats: &[BarcodeFormat]) -> anyhow::Result<Decoded> {
     let width = image.width();
     let height = image.height();
-    let mut data = BinaryBitmap::new(HybridBinarizer::new(Luma8LuminanceSource::new(
-        image.to_vec(),
-        width,
-        height,
-    )));
+    let binarizer = HybridBinarizer::new(Luma8LuminanceSource::new(image.to_vec(), width, height));
 
-    let formats = if !formats.is_empty() {
-        formats
-    } else {
-        DEFAULT_FORMATS
-    };
+    let mut hints = DecodeHints::default();
+    if !formats.is_empty() {
+        hints.PossibleFormats = Some(formats.iter().map(|v| *v).collect::<HashSet<_>>());
+    }
 
-    let hints = DecodingHintDictionary::from([(
-        DecodeHintType::POSSIBLE_FORMATS,
-        DecodeHintValue::PossibleFormats(formats.iter().map(|v| *v).collect::<HashSet<_>>()),
-    )]);
-    let hints = DecodeHints::from(hints);
+    let decoder = AdaptiveDecoder;
 
     if multi {
-        let mut reader = GenericMultipleBarcodeReader::new(MultiUseMultiFormatReader::default());
-
-        match reader.decode_multiple_with_hints(&mut data, &hints) {
+        match decoder.decode_multiple(binarizer, &mut hints) {
             Ok(results) => Ok(Decoded::Multi(
                 results
                     .into_iter()
@@ -99,8 +169,7 @@ fn decode(image: GrayImage, multi: bool, formats: &[BarcodeFormat]) -> anyhow::R
             },
         }
     } else {
-        let mut reader = MultiUseMultiFormatReader::default();
-        match reader.decode_with_hints(&mut data, &hints) {
+        match decoder.decode(binarizer, &mut hints) {
             Ok(r) => Ok(Decoded::Single(Some(DecodeResult::new(r)))),
             Err(e) => match e {
                 Exceptions::NotFoundException(_) => Ok(Decoded::Single(None)),
