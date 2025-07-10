@@ -3,9 +3,11 @@ mod error;
 use std::fs::File;
 use std::io::BufReader;
 
-use image::{GrayImage, ImageReader};
+use image::{GrayImage, io::Reader};
 use pyo3::prelude::*;
 use pyo3::pybacked::PyBackedStr;
+
+use reader_core;
 
 type Result<T> = std::result::Result<T, error::Error>;
 
@@ -42,7 +44,7 @@ impl From<reader_core::DecodeResult> for DecodeResult {
             points: value
                 .points()
                 .iter()
-                .map(|p| Point { x: p.x, y: p.y })
+                .map(|p| Point { x: p.x(), y: p.y() })
                 .collect::<Vec<_>>(),
             format: format!("{}", value.format()),
         }
@@ -77,9 +79,9 @@ fn get_image_source<'a, 'b>(obj: &'b Bound<'a, PyAny>) -> Result<ImageSource<'a,
         }
         if !conform_to_image_protocol {
             return Err(error::Error::Python(
-                pyo3::exceptions::PyValueError::new_err(format!(
-                    "value must be either str or conform to ImageProtocol"
-                )),
+                pyo3::exceptions::PyValueError::new_err(
+                    "value must be either str or conform to ImageProtocol",
+                ),
             ));
         }
         Ok(ImageSource::ImageProtocol(obj))
@@ -98,7 +100,10 @@ fn load_from_image<'a, 'b>(obj: &'b Bound<'a, PyAny>) -> Result<GrayImage> {
             .call_method0("tobytes")?
             .extract::<Vec<u8>>()?),
         _ => {
-            let message = format!("The specified image has an unsupported mode({}). Only grayscale, RGB(A), or palette mode images are supported.", mode);
+            let message = format!(
+                "The specified image has an unsupported mode({}). Only grayscale, RGB(A), or palette mode images are supported.",
+                mode
+            );
             Err(error::ImageError::UnsupportedMode(message).into())
         }
     };
@@ -117,7 +122,7 @@ fn gen_gray_image<'a, 'b>(image_source: ImageSource<'a, 'b>) -> Result<GrayImage
             let capacity = sizes.iter().min().unwrap();
 
             let buf_reader = BufReader::with_capacity(*capacity, file);
-            let reader = ImageReader::new(buf_reader).with_guessed_format()?;
+            let reader = Reader::new(buf_reader).with_guessed_format()?;
             Ok(reader.decode()?.to_luma8())
         }
         ImageSource::ImageProtocol(pyobj) => Ok(load_from_image(pyobj)?),
@@ -131,51 +136,53 @@ enum Decoded {
 
 struct _BarcodeFormat(String);
 
-impl From<_BarcodeFormat> for reader_core::BarcodeFormat {
-    fn from(value: _BarcodeFormat) -> Self {
+impl TryFrom<_BarcodeFormat> for reader_core::BarcodeFormat {
+    type Error = String;
+    fn try_from(value: _BarcodeFormat) -> std::result::Result<Self, Self::Error> {
         use reader_core::BarcodeFormat as BF;
-        match value.0.as_str() {
-            "AZTEC" => BF::AZTEC,
-            "CODABAR" => BF::CODABAR,
-            "CODE_39" => BF::CODE_39,
-            "CODE_93" => BF::CODE_93,
-            "CODE_128" => BF::CODE_128,
-            "DATA_MATRIX" => BF::DATA_MATRIX,
-            "EAN_8" => BF::EAN_8,
-            "EAN_13" => BF::EAN_13,
+        let v = match value.0.as_str() {
+            "Aztec" => BF::Aztec,
+            "Codabar" => BF::Codabar,
+            "Code39" => BF::Code39,
+            "Code93" => BF::Code93,
+            "Code128" => BF::Code128,
+            "DataBar" => BF::DataBar,
+            "DataBarExpanded" => BF::DataBarExpanded,
+            "DataBarLimited" => BF::DataBarLimited,
+            "DataMatrix" => BF::DataMatrix,
+            "EAN8" => BF::EAN8,
+            "EAN13" => BF::EAN13,
             "ITF" => BF::ITF,
-            "MAXICODE" => BF::MAXICODE,
-            "PDF_417" => BF::PDF_417,
-            "QR_CODE" => BF::QR_CODE,
-            "MICRO_QR_CODE" => BF::MICRO_QR_CODE,
-            "RECTANGULAR_MICRO_QR_CODE" => BF::RECTANGULAR_MICRO_QR_CODE,
-            "RSS_14" => BF::RSS_14,
-            "RSS_EXPANDED" => BF::RSS_EXPANDED,
-            "TELEPEN" => BF::TELEPEN,
-            "UPC_A" => BF::UPC_A,
-            "UPC_E" => BF::UPC_E,
-            "UPC_EAN_EXTENSION" => BF::UPC_EAN_EXTENSION,
-            "DX_FILM_EDGE" => BF::DXFilmEdge,
-            _ => BF::UNSUPORTED_FORMAT,
-        }
+            "MaxiCode" => BF::MaxiCode,
+            "PDF417" => BF::PDF417,
+            "QRCode" => BF::QRCode,
+            "UPCA" => BF::UPCA,
+            "UPCE" => BF::UPCE,
+            "MicroQRCode" => BF::MicroQRCode,
+            "RMQRCode" => BF::RMQRCode,
+            "DXFilmEdge" => BF::DXFilmEdge,
+            "LinearCodes" => BF::LinearCodes,
+            "MatrixCodes" => BF::MatrixCodes,
+            other => {
+                return Err(format!("`{}` is not supported", other));
+            }
+        };
+        Ok(v)
     }
 }
 
 fn decode(obj: &Bound<'_, PyAny>, formats: Option<Vec<String>>, multi: bool) -> Result<Decoded> {
-    use reader_core::{decode_multiple, decode_single, BarcodeFormat};
-
     let image_source = get_image_source(obj)?;
     let gray_image = gen_gray_image(image_source)?;
 
     let formats = formats
         .unwrap_or_else(|| vec![])
         .into_iter()
-        .map(|bf| BarcodeFormat::from(_BarcodeFormat(bf)))
-        .filter(|bf| bf != &BarcodeFormat::UNSUPORTED_FORMAT)
+        .filter_map(|bf| TryInto::<reader_core::BarcodeFormat>::try_into(_BarcodeFormat(bf)).ok())
         .collect::<Vec<_>>();
 
     let result = if multi {
-        decode_multiple(gray_image, formats.as_slice()).map(|result| {
+        reader_core::decode_multiple(gray_image, formats.as_slice()).map(|result| {
             Decoded::Multi(
                 result
                     .into_iter()
@@ -184,7 +191,7 @@ fn decode(obj: &Bound<'_, PyAny>, formats: Option<Vec<String>>, multi: bool) -> 
             )
         })
     } else {
-        decode_single(gray_image, formats.as_slice())
+        reader_core::decode_single(gray_image, formats.as_slice())
             .map(|opt| Decoded::Single(opt.map(DecodeResult::from)))
     };
 
