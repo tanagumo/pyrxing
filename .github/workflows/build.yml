@@ -89,23 +89,9 @@ jobs:
           sccache: ${{ !startsWith(github.ref, 'refs/tags/') }}
           manylinux: musllinux_1_2
           before-script-linux: |
-            if command -v apk >/dev/null 2>&1; then
-              echo "Using apk (Alpine)"
-              apk add --no-cache build-base cmake g++ gcc musl-dev git ninja
-            elif command -v apt-get >/dev/null 2>&1; then
-              echo "Using apt-get (Ubuntu/Debian)"
-              apt-get update
-              apt-get install -y build-essential cmake g++ gcc git ninja-build
-            elif command -v yum >/dev/null 2>&1; then
-              echo "Using yum (CentOS/RHEL)"
-              yum install -y cmake3 gcc-c++ ninja-build git
-              ln -sf /usr/bin/cmake3 /usr/bin/cmake
-            else
-              echo "Unknown package manager"
-              exit 1
-            fi
-
-            python -m pip install patchelf
+            apt-get update
+            DEBIAN_FRONTEND=noninteractive apt-get install -y build-essential cmake g++ gcc git ninja-build
+            python3 -m pip install patchelf
 
   #    - name: Upload wheels
   #      uses: actions/upload-artifact@v4
