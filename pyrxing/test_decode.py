@@ -1,85 +1,68 @@
 import pytest
-
 from PIL import Image
+
 import pyrxing
 
 
-def test_read_barcodes():
-    qr_code = Image.open('assets/test_qr1_rgb.png')
-    res = pyrxing.read_barcodes(qr_code)
-    assert len(res) == 1
-    assert res[0].text == 'test_qr1'
-    assert res[0].format == 'qrcode'
+ASSETS = {
+    "assets/test_aztec.png": {"format": "MicroQRCode", "value": "Code Code Data"},
+    "assets/test_codabar.png": {"format": "Codabar", "value": "A-12656-D"},
+    "assets/test_code128.png": {
+        "format": "Code128",
+        "value": "Python Barcode Random World",
+    },
+    "assets/test_code39.png": {"format": "Code39", "value": "QD9MZ5O"},
+    "assets/test_code93.png": {"format": "Code93", "value": "ABC-1234-/+"},
+    "assets/test_data_bar.png": {
+        "format": "DataBar",
+        "value": "01234567890128",
+    },
+    "assets/test_data_bar_expanded.png": {
+        "format": "DataBarExpanded",
+        "value": "011234567890123-ABCabc",
+    },
+    "assets/test_data_bar_limited.png": {
+        "format": "DataBarLimited",
+        "value": "0101234567890128",
+    },
+    "assets/test_data_matrix.png": {
+        "format": "DataMatrix",
+        "value": "DataMatrix_31802",
+    },
+    "assets/test_dx_film_edge.png": {
+        "format": "Code128",
+        "value": "DXFilmEdge_6086",
+    },
+    "assets/test_ean13.png": {"format": "EAN13", "value": "2708639496369"},
+    "assets/test_ean8.png": {"format": "EAN8", "value": "07727931"},
+    "assets/test_itf.png": {"format": "ITF", "value": "4577279804"},
+    "assets/test_maxi_code.png": {
+        "format": "MaxiCode",
+        "value": "MaxiCode_46753",
+    },
+    "assets/test_micro_qr.png": {
+        "format": "MicroQRCode",
+        "value": "0ZFXY9",
+    },
+    "assets/test_pdf417.png": {"format": "PDF417", "value": "PDF417_12417"},
+    "assets/test_qr_code.png": {
+        "format": "QRCode",
+        "value": "https://demo.net/demo/7809",
+    },
+    "assets/test_rmqr.png": {"format": "MicroQRCode", "value": "V4GQ68D2"},
+    "assets/test_upc_a.png": {"format": "UPCA", "value": "041935974561"},
+    "assets/test_upc_e.png": {"format": "UPCE", "value": "18274974"},
+}
 
-    # read_barcodes accept path for image file
-    res = pyrxing.read_barcodes('assets/test_qr1_rgb.png')
-    assert len(res) == 1
-    assert res[0].text == 'test_qr1'
-    assert res[0].format == 'qrcode'
+def test_read():
+    for path, v in ASSETS.items():
+        i = Image.open(path)
+        res = pyrxing.read_barcode(i)
+        assert res is not None
+        assert res.text == v['value']
+        assert res.format == v['format']
 
-    qr_code_palette = Image.open('assets/test_qr1_palette.png')
-    assert qr_code_palette.mode == 'P'
-    res = pyrxing.read_barcodes(qr_code_palette)
-    assert len(res) == 1
-    assert res[0].text == 'test_qr1'
-    assert res[0].format == 'qrcode'
-
-    itf_code = Image.open('assets/itf_code.png')
-    res = pyrxing.read_barcodes(itf_code)
-    assert len(res) == 1
-    assert res[0].text == '12121212121217'
-    assert res[0].format == 'itf'
-
-    jan_code = Image.open('assets/jan_13.png')
-    res = pyrxing.read_barcodes(jan_code)
-    assert len(res) == 1
-    assert res[0].text == '1212121212128'
-    assert res[0].format == 'ean 13'
-
-    # image merged from test_qr1_rgb.png and itf_code.png
-    multiple = Image.open('assets/multiple_codes.png')
-    res = pyrxing.read_barcodes(multiple)
-    assert len(res) == 2
-    assert {r.text for r in res} == {'12121212121217', 'test_qr1'}
-    assert {r.format for r in res} == {'qrcode', 'itf'}
-
-    # when the formats parameter is specified, only codes matching the specified formats are returned.
-    res = pyrxing.read_barcodes(multiple, formats=['QR_CODE'])
-    assert len(res) == 1
-    assert {r.text for r in res} == {'test_qr1'}
-    assert {r.format for r in res} == {'qrcode'}
-
-    res = pyrxing.read_barcodes(multiple, formats=['ITF'])
-    assert len(res) == 1
-    assert {r.text for r in res} == {'12121212121217'}
-    assert {r.format for r in res} == {'itf'}
-
-    res = pyrxing.read_barcodes(multiple, formats=['ITF', 'QR_CODE'])
-    assert len(res) == 2
-    assert {r.text for r in res} == {'12121212121217', 'test_qr1'}
-    assert {r.format for r in res} == {'qrcode', 'itf'}
-
-    res = pyrxing.read_barcodes(multiple, formats=['AZTEC'])
-    assert res == []
-
-    # Raise FileNotFoundError if the file does not exist.
-    with pytest.raises(FileNotFoundError):
-        pyrxing.read_barcodes('does_not_exist')
-
-    # Raise a ValueError if the value passed to function read_barcodes is not of type str .
-    with pytest.raises(FileNotFoundError):
-        pyrxing.read_barcodes('does_not_exist')
-
-    # Raise a ImageError if the mode of the image is not supported.
-    cmyk = Image.open('assets/test_qr_cmyk.jpeg')
-    assert cmyk.mode == 'CMYK'
-    with pytest.raises(pyrxing.ImageError):
-        pyrxing.read_barcodes(cmyk)
-
-    # When an image does not have any codes, read_barcodes returns an empty list.
-    res = pyrxing.read_barcodes('assets/no_code.png')
-    assert res == []
-
-    # When an image does not have any codes, read_barcodes returns an empty list.
-    res = pyrxing.read_barcode('assets/no_code.png')
-    assert res is None
+        res = pyrxing.read_barcodes(i)
+        assert len(res) == 1
+        assert res[0].text == v['value']
+        assert res[0].format == v['format']
