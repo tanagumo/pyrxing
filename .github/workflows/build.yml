@@ -25,8 +25,6 @@ jobs:
             target: x86_64
           - runner: ubuntu-22.04
             target: aarch64
-          - runner: ubuntu-22.04
-            target: armv7
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -63,18 +61,13 @@ jobs:
         platform:
           - runner: ubuntu-22.04
             target: x86_64
-          - runner: ubuntu-22.04
+          - runner: ubuntu-22.04-arm
             target: aarch64
-          - runner: ubuntu-22.04
-            target: armv7
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
           python-version: 3.x
-      - name: Setup QEMU
-        if: matrix.platform.target != 'x86_64'
-        uses: docker/setup-qemu-action@v2
       - name: copy README.md
         run: |
           cp README.md pyrxing
@@ -85,12 +78,25 @@ jobs:
           key: ${{ runner.os }}-${{ matrix.platform.target }}
       - name: Build wheels
         run: |
+          case "${{ matrix.platform.target }}" in
+            "x86_64")  RUST_TARGET="stable-x86_64-unknown-linux-musl" ;;
+            "aarch64") RUST_TARGET="stable-aarch64-unknown-linux-musl" ;;
+          esac
+          
+          case "${{ matrix.platform.target }}" in
+            "x86_64")  DOCKER_PLATFORM="linux/amd64" ;;
+            "aarch64") DOCKER_PLATFORM="linux/arm64" ;;
+          esac
+          
           docker run --rm \
+            --platform $DOCKER_PLATFORM \
             -v $(pwd):/workspace \
             -w /workspace/pyrxing \
             python:3.13.5-alpine3.22 \
             sh -c "
-              apk add --no-cache build-base cmake g++ gcc musl-dev git ninja rust cargo &&
+              apk add --no-cache build-base cmake g++ gcc musl-dev git ninja curl &&
+              curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --default-toolchain $RUST_TARGET &&
+              source ~/.cargo/env &&
               pip install maturin patchelf &&
               maturin build --release -i ${TARGET_PYTHON} --out dist
             "
