@@ -23,7 +23,7 @@ This library offers efficient barcode scanning in pure Python environments, with
 ### Platforms
 
 * **Linux** (manylinux & musllinux wheels)
-  * Architectures: `x86_64`, `aarch64`, `armv7`
+  * Architectures: `x86_64`, `aarch64`
 * **macOS**
   * Universal binaries for both Intel and Apple Silicon (arm64)
 * **Windows**
