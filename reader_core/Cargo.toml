@@ -6,6 +6,6 @@ license.workspace = true
 edition.workspace = true
 
 [dependencies]
-rxing = "0.7.1"
-image = "0.25.5"
 anyhow = "1.0.97"
+flagset = "0.4.7"
+zxing-cpp = { version = "0.4.1", features = ["bundled"] }

@@ -1,28 +1,27 @@
-from typing import Literal, Protocol, Union
+from typing import Any, Literal, Protocol
 
 
 BarcodeFormat = Literal[
-    'AZTEC',
-    'CODABAR',
-    'CODE_39',
-    'CODE_93',
-    'CODE_128',
-    'DATA_MATRIX',
-    'EAN_8',
-    'EAN_13',
-    'ITF',
-    'MAXICODE',
-    'PDF_417',
-    'QR_CODE',
-    'MICRO_QR_CODE',
-    'RECTANGULAR_MICRO_QR_CODE',
-    'RSS_14',
-    'RSS_EXPANDED',
-    'TELEPEN',
-    'UPC_A',
-    'UPC_E',
-    'UPC_EAN_EXTENSION',
-    'DX_FILM_EDGE',
+    "Aztec",
+    "Codabar",
+    "Code39",
+    "Code93",
+    "Code128",
+    "DataBar",
+    "DataBarExpanded",
+    "DataBarLimited",
+    "DataMatrix",
+    "EAN8",
+    "EAN13",
+    "ITF",
+    "MaxiCode",
+    "PDF417",
+    "QRCode",
+    "UPCA",
+    "UPCE",
+    "MicroQRCode",
+    "RMQRCode",
+    "DXFilmEdge",
 ]
 
 
@@ -36,7 +35,9 @@ class ImageProtocol(Protocol):
     def tobytes(self) -> bytes:
         """return pixel data as byte array"""
 
-    def convert(self, mode: str): ...
+    def convert(self, mode: str) -> Any: ...
+
+    def load(self): ...
 
 
 class BarcodeDecodeError(Exception): ...
@@ -61,5 +62,5 @@ class DecodeResult:
     def format(self) -> str: ...
 
 
-def read_barcode(image: Union[str, ImageProtocol], *, formats: Union[list[BarcodeFormat], None] = None) -> Union[DecodeResult, None]: ...
-def read_barcodes(image: Union[str, ImageProtocol], *, formats: Union[list[BarcodeFormat], None] = None) -> list[DecodeResult]: ...
+def read_barcode(image: str | ImageProtocol, *, formats: list[BarcodeFormat] | None = None) -> DecodeResult | None: ...
+def read_barcodes(image: str | ImageProtocol, *, formats: list[BarcodeFormat] | None = None) -> list[DecodeResult]: ...

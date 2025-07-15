@@ -3,9 +3,9 @@ members = [ "pyrxing", "reader_core"]
 resolver = "3"
 
 [workspace.package]
-version = "0.3.0"
+version = "0.4.0"
 authors = ["Takanobu Nagumo <nagumo5683@gmail.com>"]
-license = "MIT"
+license = "Apache-2.0"
 edition = "2024"
 
 [profile.release]

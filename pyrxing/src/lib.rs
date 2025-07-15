@@ -3,9 +3,12 @@ mod error;
 use std::fs::File;
 use std::io::BufReader;
 
-use image::{GrayImage, ImageReader};
+use image::ImageReader;
 use pyo3::prelude::*;
 use pyo3::pybacked::PyBackedStr;
+use pyo3::types::PyBytes;
+
+use reader_core::{self, GrayImage};
 
 type Result<T> = std::result::Result<T, error::Error>;
 
@@ -13,9 +16,9 @@ type Result<T> = std::result::Result<T, error::Error>;
 #[derive(Clone)]
 struct Point {
     #[pyo3(get)]
-    x: f32,
+    x: i32,
     #[pyo3(get)]
-    y: f32,
+    y: i32,
 }
 
 #[pymethods]
@@ -42,7 +45,7 @@ impl From<reader_core::DecodeResult> for DecodeResult {
             points: value
                 .points()
                 .iter()
-                .map(|p| Point { x: p.x, y: p.y })
+                .map(|p| Point { x: p.x(), y: p.y() })
                 .collect::<Vec<_>>(),
             format: format!("{}", value.format()),
         }
@@ -50,17 +53,67 @@ impl From<reader_core::DecodeResult> for DecodeResult {
 }
 
 #[derive(Debug)]
-enum ImageSource<'a, 'b> {
-    Path(String),
-    ImageProtocol(&'b Bound<'a, PyAny>),
+enum ImageSource<'a> {
+    Path(PyBackedStr),
+    ImageProtocolData {
+        data: Vec<u8>,
+        width: u32,
+        height: u32,
+    },
+    ImageProtocolDataView {
+        _holder: Bound<'a, PyAny>,
+        data: Bound<'a, PyAny>,
+        width: u32,
+        height: u32,
+    },
 }
 
-fn get_image_source<'a, 'b>(obj: &'b Bound<'a, PyAny>) -> Result<ImageSource<'a, 'b>> {
+impl<'a, 'b: 'a> TryInto<GrayImage<'a>> for &'a ImageSource<'b> {
+    type Error = error::Error;
+
+    fn try_into(self) -> std::result::Result<GrayImage<'a>, Self::Error> {
+        match self {
+            ImageSource::Path(path) => {
+                let file = File::open(&**path)?;
+                let file_size = file.metadata()?.len();
+
+                let sizes = [file_size as usize, 10_000_000];
+                let capacity = sizes.iter().min().unwrap();
+
+                let buf_reader = BufReader::with_capacity(*capacity, file);
+                let reader = ImageReader::new(buf_reader).with_guessed_format()?;
+                let image_buffer = reader.decode()?.to_luma8();
+                let width = image_buffer.width();
+                let height = image_buffer.height();
+                Ok(GrayImage::new(image_buffer.into_raw(), width, height))
+            }
+            ImageSource::ImageProtocolData {
+                data,
+                width,
+                height,
+            } => Ok(GrayImage::new(data, *width, *height)),
+            ImageSource::ImageProtocolDataView {
+                // Holds the __array_interface__ object to maintain its reference count.
+                // Python's __array_interface__ property may creates temporary view objects
+                // that get GC'd immediately if not referenced, invalidating data.
+                _holder,
+                data,
+                width,
+                height,
+            } => {
+                let py_bytes = data.downcast::<PyBytes>().unwrap().as_bytes();
+                Ok(GrayImage::new(py_bytes, *width, *height))
+            }
+        }
+    }
+}
+
+fn get_image_source<'a>(obj: &Bound<'a, PyAny>) -> Result<ImageSource<'a>> {
     let type_obj = obj.get_type();
     let type_name = type_obj.name()?;
 
     if type_name == "str" {
-        Ok(ImageSource::Path(obj.extract::<String>()?))
+        Ok(ImageSource::Path(obj.extract::<PyBackedStr>()?))
     } else {
         let mut conform_to_image_protocol = true;
         if !obj.hasattr("mode")?
@@ -68,59 +121,76 @@ fn get_image_source<'a, 'b>(obj: &'b Bound<'a, PyAny>) -> Result<ImageSource<'a,
             || !obj.hasattr("height")?
             || !obj.hasattr("tobytes")?
             || !obj.hasattr("convert")?
+            || !obj.hasattr("load")?
         {
             conform_to_image_protocol = false;
         } else {
-            if !obj.getattr("tobytes")?.is_callable() || !obj.getattr("convert")?.is_callable() {
+            if !obj.getattr("tobytes")?.is_callable()
+                || !obj.getattr("convert")?.is_callable()
+                || !obj.getattr("load")?.is_callable()
+            {
                 conform_to_image_protocol = false;
             }
         }
         if !conform_to_image_protocol {
             return Err(error::Error::Python(
-                pyo3::exceptions::PyValueError::new_err(format!(
-                    "value must be either str or conform to ImageProtocol"
-                )),
+                pyo3::exceptions::PyValueError::new_err(
+                    "value must be either str or conform to ImageProtocol",
+                ),
             ));
         }
-        Ok(ImageSource::ImageProtocol(obj))
-    }
-}
 
-fn load_from_image<'a, 'b>(obj: &'b Bound<'a, PyAny>) -> Result<GrayImage> {
-    let mode = obj.getattr("mode")?.extract::<PyBackedStr>()?;
-    let width = obj.getattr("width")?.extract::<u32>()?;
-    let height = obj.getattr("height")?.extract::<u32>()?;
+        let mode = obj.getattr("mode")?.extract::<PyBackedStr>()?;
 
-    let result: Result<_> = match &*mode {
-        "L" => Ok(obj.call_method0("tobytes")?.extract::<Vec<u8>>()?),
-        "RGB" | "RGBA" | "P" => Ok(obj
-            .call_method1("convert", ("L",))?
-            .call_method0("tobytes")?
-            .extract::<Vec<u8>>()?),
-        _ => {
-            let message = format!("The specified image has an unsupported mode({}). Only grayscale, RGB(A), or palette mode images are supported.", mode);
-            Err(error::ImageError::UnsupportedMode(message).into())
+        let mut converted_opt = None;
+        match &*mode {
+            "L" => {}
+            "RGB" | "RGBA" | "P" | "1" => {
+                converted_opt = Some(
+                    obj.call_method1("convert", ("L",))?
+                        .extract::<Bound<'a, PyAny>>()?,
+                );
+            }
+            _ => {
+                let message = format!(
+                    "The specified image has an unsupported mode({}). Only grayscale, RGB(A), or palette mode images are supported.",
+                    mode
+                );
+                return Err(error::ImageError::UnsupportedMode(message).into());
+            }
         }
-    };
 
-    let gray_image = GrayImage::from_raw(width, height, result?).unwrap();
-    Ok(gray_image)
-}
+        let target_obj: &Bound<'a, PyAny> = match &converted_opt {
+            Some(v) => {
+                v.call_method0("load")?;
+                v
+            }
+            None => obj,
+        };
 
-fn gen_gray_image<'a, 'b>(image_source: ImageSource<'a, 'b>) -> Result<GrayImage> {
-    match image_source {
-        ImageSource::Path(s) => {
-            let file = File::open(&s)?;
-            let file_size = file.metadata()?.len();
+        let width = target_obj.getattr("width")?.extract::<u32>()?;
+        let height = target_obj.getattr("height")?.extract::<u32>()?;
 
-            let sizes = [file_size as usize, 10_000_000];
-            let capacity = sizes.iter().min().unwrap();
-
-            let buf_reader = BufReader::with_capacity(*capacity, file);
-            let reader = ImageReader::new(buf_reader).with_guessed_format()?;
-            Ok(reader.decode()?.to_luma8())
+        if target_obj.hasattr("__array_interface__")? {
+            let ai = target_obj.getattr("__array_interface__")?;
+            let type_str = ai.get_item("typestr")?.extract::<PyBackedStr>()?;
+            if type_str == "|u1" {
+                let data = ai.get_item("data")?;
+                return Ok(ImageSource::ImageProtocolDataView {
+                    _holder: ai,
+                    data,
+                    width,
+                    height,
+                });
+            }
         }
-        ImageSource::ImageProtocol(pyobj) => Ok(load_from_image(pyobj)?),
+
+        let data = target_obj.call_method0("tobytes")?.extract::<Vec<u8>>()?;
+        Ok(ImageSource::ImageProtocolData {
+            data,
+            width,
+            height,
+        })
     }
 }
 
@@ -131,51 +201,51 @@ enum Decoded {
 
 struct _BarcodeFormat(String);
 
-impl From<_BarcodeFormat> for reader_core::BarcodeFormat {
-    fn from(value: _BarcodeFormat) -> Self {
+impl TryFrom<_BarcodeFormat> for reader_core::BarcodeFormat {
+    type Error = String;
+    fn try_from(value: _BarcodeFormat) -> std::result::Result<Self, Self::Error> {
         use reader_core::BarcodeFormat as BF;
-        match value.0.as_str() {
-            "AZTEC" => BF::AZTEC,
-            "CODABAR" => BF::CODABAR,
-            "CODE_39" => BF::CODE_39,
-            "CODE_93" => BF::CODE_93,
-            "CODE_128" => BF::CODE_128,
-            "DATA_MATRIX" => BF::DATA_MATRIX,
-            "EAN_8" => BF::EAN_8,
-            "EAN_13" => BF::EAN_13,
+        let v = match value.0.as_str() {
+            "Aztec" => BF::Aztec,
+            "Codabar" => BF::Codabar,
+            "Code39" => BF::Code39,
+            "Code93" => BF::Code93,
+            "Code128" => BF::Code128,
+            "DataBar" => BF::DataBar,
+            "DataBarExpanded" => BF::DataBarExpanded,
+            "DataBarLimited" => BF::DataBarLimited,
+            "DataMatrix" => BF::DataMatrix,
+            "EAN8" => BF::EAN8,
+            "EAN13" => BF::EAN13,
             "ITF" => BF::ITF,
-            "MAXICODE" => BF::MAXICODE,
-            "PDF_417" => BF::PDF_417,
-            "QR_CODE" => BF::QR_CODE,
-            "MICRO_QR_CODE" => BF::MICRO_QR_CODE,
-            "RECTANGULAR_MICRO_QR_CODE" => BF::RECTANGULAR_MICRO_QR_CODE,
-            "RSS_14" => BF::RSS_14,
-            "RSS_EXPANDED" => BF::RSS_EXPANDED,
-            "TELEPEN" => BF::TELEPEN,
-            "UPC_A" => BF::UPC_A,
-            "UPC_E" => BF::UPC_E,
-            "UPC_EAN_EXTENSION" => BF::UPC_EAN_EXTENSION,
-            "DX_FILM_EDGE" => BF::DXFilmEdge,
-            _ => BF::UNSUPORTED_FORMAT,
-        }
+            "MaxiCode" => BF::MaxiCode,
+            "PDF417" => BF::PDF417,
+            "QRCode" => BF::QRCode,
+            "UPCA" => BF::UPCA,
+            "UPCE" => BF::UPCE,
+            "MicroQRCode" => BF::MicroQRCode,
+            "RMQRCode" => BF::RMQRCode,
+            "DXFilmEdge" => BF::DXFilmEdge,
+            other => {
+                return Err(format!("`{}` is not supported", other));
+            }
+        };
+        Ok(v)
     }
 }
 
 fn decode(obj: &Bound<'_, PyAny>, formats: Option<Vec<String>>, multi: bool) -> Result<Decoded> {
-    use reader_core::{decode_multiple, decode_single, BarcodeFormat};
-
-    let image_source = get_image_source(obj)?;
-    let gray_image = gen_gray_image(image_source)?;
+    let image_source = &get_image_source(obj)?;
+    let gray_image = (image_source).try_into()?;
 
     let formats = formats
         .unwrap_or_else(|| vec![])
         .into_iter()
-        .map(|bf| BarcodeFormat::from(_BarcodeFormat(bf)))
-        .filter(|bf| bf != &BarcodeFormat::UNSUPORTED_FORMAT)
+        .filter_map(|bf| TryInto::<reader_core::BarcodeFormat>::try_into(_BarcodeFormat(bf)).ok())
         .collect::<Vec<_>>();
 
     let result = if multi {
-        decode_multiple(gray_image, formats.as_slice()).map(|result| {
+        reader_core::decode_multiple(gray_image, formats.as_slice()).map(|result| {
             Decoded::Multi(
                 result
                     .into_iter()
@@ -184,7 +254,7 @@ fn decode(obj: &Bound<'_, PyAny>, formats: Option<Vec<String>>, multi: bool) -> 
             )
         })
     } else {
-        decode_single(gray_image, formats.as_slice())
+        reader_core::decode_single(gray_image, formats.as_slice())
             .map(|opt| Decoded::Single(opt.map(DecodeResult::from)))
     };
 

@@ -8,7 +8,7 @@ dynamic = ["version"]
 description = "A barcode reader extension module using rxing (a ZXing port) and pyo3"
 authors = [{name = "Takanobu Nagumo", email = "nagumo5683@gmail.com"}]
 readme = "README.md"
-license = {text = "MIT"}
+license = {text = "Apache-2.0"}
 keywords = ["barcode", "rxing"]
 
 requires-python = ">=3.11"
@@ -21,7 +21,7 @@ classifiers = [
 
     "Programming Language :: Python :: Implementation :: CPython",
 
-    "License :: OSI Approved :: MIT License",
+    "License :: OSI Approved :: Apache Software License",
 ]
 
 [tool.maturin]
