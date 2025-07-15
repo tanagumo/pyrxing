@@ -23,7 +23,7 @@ jobs:
         platform:
           - runner: ubuntu-22.04
             target: x86_64
-          - runner: ubuntu-22.04
+          - runner: ubuntu-22.04-arm
             target: aarch64
     steps:
       - uses: actions/checkout@v4
@@ -39,13 +39,29 @@ jobs:
           workspaces: pyrxing
           key: ${{ runner.os }}-${{ matrix.platform.target }}
       - name: Build wheels
-        uses: PyO3/maturin-action@v1
-        with:
-          working-directory: pyrxing
-          target: ${{ matrix.platform.target }}
-          args: --release --out dist --interpreter $TARGET_PYTHON
-          sccache: ${{ !startsWith(github.ref, 'refs/tags/') }}
-          manylinux: auto
+        run: |
+          case "${{ matrix.platform.target }}" in
+            "x86_64")  RUST_TARGET="stable-x86_64-unknown-linux-gnu" ;;
+            "aarch64") RUST_TARGET="stable-aarch64-unknown-linux-gnu" ;;
+          esac
+          
+          case "${{ matrix.platform.target }}" in
+            "x86_64")  DOCKER_PLATFORM="linux/amd64" ;;
+            "aarch64") DOCKER_PLATFORM="linux/arm64" ;;
+          esac
+          
+          docker run --rm \
+            --platform $DOCKER_PLATFORM \
+            -v $(pwd):/workspace \
+            -w /workspace/pyrxing \
+            python:3.13.5-slim \
+            sh -c "
+              apt-get update && apt-get install -y build-essential cmake g++ gcc ninja-build curl
+              curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --default-toolchain $RUST_TARGET &&
+              . ~/.cargo/env &&
+              pip install maturin patchelf &&
+              maturin build --release -i ${TARGET_PYTHON} --out dist
+            "
       - name: Upload wheels
         uses: actions/upload-artifact@v4
         with:
