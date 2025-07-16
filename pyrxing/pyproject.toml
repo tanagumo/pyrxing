@@ -5,11 +5,21 @@ build-backend = "maturin"
 [project]
 name = "pyrxing"
 dynamic = ["version"]
-description = "A barcode reader extension module using rxing (a ZXing port) and pyo3"
+description = "A barcode reader extension module using zxing-cpp and pyo3"
 authors = [{name = "Takanobu Nagumo", email = "nagumo5683@gmail.com"}]
 readme = "README.md"
 license = {text = "Apache-2.0"}
-keywords = ["barcode", "rxing"]
+keywords = [
+    "barcode", 
+    "qr-code", 
+    "scanner", 
+    "decoder", 
+    "zxing", 
+    "computer-vision", 
+    "image-processing",
+    "rust",
+    "alpine"
+]
 
 requires-python = ">=3.11"
 classifiers = [
