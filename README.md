@@ -27,7 +27,7 @@ This library offers efficient barcode scanning in pure Python environments, with
 * **macOS**
   * Universal binaries for both Intel and Apple Silicon (arm64)
 * **Windows**
-  * Architectures: `x64`, `x86`
+  * Architectures: `x64`
 
 ### Python Versions
 
