@@ -31,7 +31,7 @@ This library offers efficient barcode scanning in pure Python environments, with
 
 ### Python Versions
 
-Python 3.11+
+Python 3.11 - 3.14
 
 ---
 

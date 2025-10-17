@@ -1,7 +1,7 @@
 name: build
 
 env:
-  TARGET_PYTHON: "python3.13 python3.12 python3.11"
+  TARGET_PYTHON: "python3.14 python3.13 python3.12 python3.11"
 
 on:
   push:
