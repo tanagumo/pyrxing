@@ -10,6 +10,7 @@ on:
       - master
     tags:
       - '*'
+  pull_request:
   workflow_dispatch:
 
 permissions:
@@ -30,26 +31,42 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: 3.x
+      - name: Calculate source hash
+        id: source-hash
+        run: |
+          HASH=$(find pyrxing reader_core -type f \( -name '*.rs' -o -name '*.toml' -o -name '*.lock' \) 2>/dev/null | sort | xargs cat | sha256sum | cut -d' ' -f1)
+          echo "hash=$HASH" >> $GITHUB_OUTPUT
+      - name: Check build cache
+        id: build-cache
+        if: ${{ !startsWith(github.ref, 'refs/tags/') }}
+        uses: actions/cache@v4
+        with:
+          path: pyrxing/dist
+          key: wheels-linux-${{ matrix.platform.target }}-${{ steps.source-hash.outputs.hash }}
       - name: copy README.md
+        if: steps.build-cache.outputs.cache-hit != 'true'
         run: |
           cp README.md pyrxing
       - name: Cache Rust dependencies
+        if: steps.build-cache.outputs.cache-hit != 'true'
         uses: Swatinem/rust-cache@v2
         with:
           workspaces: pyrxing
           key: ${{ runner.os }}-${{ matrix.platform.target }}
       - name: Build wheels
+        id: build
+        if: steps.build-cache.outputs.cache-hit != 'true'
         run: |
           case "${{ matrix.platform.target }}" in
             "x86_64")  RUST_TARGET="stable-x86_64-unknown-linux-gnu" ;;
             "aarch64") RUST_TARGET="stable-aarch64-unknown-linux-gnu" ;;
           esac
-          
+
           case "${{ matrix.platform.target }}" in
             "x86_64")  DOCKER_PLATFORM="linux/amd64" ;;
             "aarch64") DOCKER_PLATFORM="linux/arm64" ;;
           esac
-          
+
           docker run --rm \
             --platform $DOCKER_PLATFORM \
             -v $(pwd):/workspace \
@@ -63,6 +80,7 @@ jobs:
               maturin build --release -i ${TARGET_PYTHON} --out dist
             "
       - name: Upload wheels
+        if: steps.build.outcome == 'success'
         uses: actions/upload-artifact@v4
         with:
           name: wheels-linux-${{ matrix.platform.target }}
@@ -84,26 +102,42 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: 3.x
+      - name: Calculate source hash
+        id: source-hash
+        run: |
+          HASH=$(find pyrxing reader_core -type f \( -name '*.rs' -o -name '*.toml' -o -name '*.lock' \) 2>/dev/null | sort | xargs cat | sha256sum | cut -d' ' -f1)
+          echo "hash=$HASH" >> $GITHUB_OUTPUT
+      - name: Check build cache
+        id: build-cache
+        if: ${{ !startsWith(github.ref, 'refs/tags/') }}
+        uses: actions/cache@v4
+        with:
+          path: pyrxing/dist
+          key: wheels-musllinux-${{ matrix.platform.target }}-${{ steps.source-hash.outputs.hash }}
       - name: copy README.md
+        if: steps.build-cache.outputs.cache-hit != 'true'
         run: |
           cp README.md pyrxing
       - name: Cache Rust dependencies
+        if: steps.build-cache.outputs.cache-hit != 'true'
         uses: Swatinem/rust-cache@v2
         with:
           workspaces: pyrxing
           key: ${{ runner.os }}-${{ matrix.platform.target }}
       - name: Build wheels
+        id: build
+        if: steps.build-cache.outputs.cache-hit != 'true'
         run: |
           case "${{ matrix.platform.target }}" in
             "x86_64")  RUST_TARGET="stable-x86_64-unknown-linux-musl" ;;
             "aarch64") RUST_TARGET="stable-aarch64-unknown-linux-musl" ;;
           esac
-          
+
           case "${{ matrix.platform.target }}" in
             "x86_64")  DOCKER_PLATFORM="linux/amd64" ;;
             "aarch64") DOCKER_PLATFORM="linux/arm64" ;;
           esac
-          
+
           docker run --rm \
             --platform $DOCKER_PLATFORM \
             -v $(pwd):/workspace \
@@ -117,6 +151,7 @@ jobs:
               maturin build --release -i ${TARGET_PYTHON} --out dist
             "
       - name: Upload wheels
+        if: steps.build.outcome == 'success'
         uses: actions/upload-artifact@v4
         with:
           name: wheels-musllinux-${{ matrix.platform.target }}
@@ -138,15 +173,31 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: 3.x
+      - name: Calculate source hash
+        id: source-hash
+        run: |
+          HASH=$(find pyrxing reader_core -type f \( -name '*.rs' -o -name '*.toml' -o -name '*.lock' \) 2>/dev/null | sort | xargs cat | shasum -a 256 | cut -d' ' -f1)
+          echo "hash=$HASH" >> $GITHUB_OUTPUT
+      - name: Check build cache
+        id: build-cache
+        if: ${{ !startsWith(github.ref, 'refs/tags/') }}
+        uses: actions/cache@v4
+        with:
+          path: pyrxing/dist
+          key: wheels-macos-${{ matrix.platform.target }}-${{ steps.source-hash.outputs.hash }}
       - name: copy README.md
+        if: steps.build-cache.outputs.cache-hit != 'true'
         run: |
           cp README.md pyrxing
       - name: Cache Rust dependencies
+        if: steps.build-cache.outputs.cache-hit != 'true'
         uses: Swatinem/rust-cache@v2
         with:
           workspaces: pyrxing
           key: ${{ runner.os }}-${{ matrix.platform.target }}
       - name: Build wheels
+        id: build
+        if: steps.build-cache.outputs.cache-hit != 'true'
         uses: PyO3/maturin-action@v1
         with:
           working-directory: pyrxing
@@ -154,6 +205,7 @@ jobs:
           args: --release --out dist --find-interpreter
           sccache: ${{ !startsWith(github.ref, 'refs/tags/') }}
       - name: Upload wheels
+        if: steps.build.outcome == 'success'
         uses: actions/upload-artifact@v4
         with:
           name: wheels-macos-${{ matrix.platform.target }}
@@ -173,15 +225,32 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: 3.x
+      - name: Calculate source hash
+        id: source-hash
+        shell: bash
+        run: |
+          HASH=$(find pyrxing reader_core -type f \( -name '*.rs' -o -name '*.toml' -o -name '*.lock' \) 2>/dev/null | sort | xargs cat | sha256sum | cut -d' ' -f1)
+          echo "hash=$HASH" >> $GITHUB_OUTPUT
+      - name: Check build cache
+        id: build-cache
+        if: ${{ !startsWith(github.ref, 'refs/tags/') }}
+        uses: actions/cache@v4
+        with:
+          path: pyrxing/dist
+          key: wheels-windows-${{ matrix.platform.target }}-${{ steps.source-hash.outputs.hash }}
       - name: copy README.md
+        if: steps.build-cache.outputs.cache-hit != 'true'
         run: |
           cp README.md pyrxing
       - name: Cache Rust dependencies
+        if: steps.build-cache.outputs.cache-hit != 'true'
         uses: Swatinem/rust-cache@v2
         with:
           workspaces: pyrxing
           key: ${{ runner.os }}-${{ matrix.platform.target }}
       - name: Build wheels
+        id: build
+        if: steps.build-cache.outputs.cache-hit != 'true'
         uses: PyO3/maturin-action@v1
         with:
           working-directory: pyrxing
@@ -189,6 +258,7 @@ jobs:
           args: --release --out dist --find-interpreter
           sccache: ${{ !startsWith(github.ref, 'refs/tags/') }}
       - name: Upload wheels
+        if: steps.build.outcome == 'success'
         uses: actions/upload-artifact@v4
         with:
           name: wheels-windows-${{ matrix.platform.target }}
@@ -204,12 +274,14 @@ jobs:
         run: |
           cp README.md pyrxing
       - name: Build sdist
+        id: build
         uses: PyO3/maturin-action@v1
         with:
           working-directory: pyrxing
           command: sdist
           args: --out dist
       - name: Upload sdist
+        if: steps.build.outcome == 'success'
         uses: actions/upload-artifact@v4
         with:
           name: wheels-sdist
