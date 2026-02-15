@@ -14,8 +14,8 @@ ASSETS = {
     "assets/test_code39.png": {"format": "Code39", "value": "QD9MZ5O"},
     "assets/test_code93.png": {"format": "Code93", "value": "ABC-1234-/+"},
     "assets/test_data_bar.png": {
-        "format": "DataBar",
-        "value": "01234567890128",
+        "format": "DataBarOmni",
+        "value": "(01)01234567890128",
     },
     "assets/test_data_bar_expanded.png": {
         "format": "DataBarExpanded",
@@ -23,7 +23,7 @@ ASSETS = {
     },
     "assets/test_data_bar_limited.png": {
         "format": "DataBarLimited",
-        "value": "0101234567890128",
+        "value": "(01)01234567890128",
     },
     "assets/test_data_matrix.png": {
         "format": "DataMatrix",
@@ -50,8 +50,8 @@ ASSETS = {
         "value": "https://demo.net/demo/7809",
     },
     "assets/test_rmqr.png": {"format": "MicroQRCode", "value": "V4GQ68D2"},
-    "assets/test_upc_a.png": {"format": "UPCA", "value": "041935974561"},
-    "assets/test_upc_e.png": {"format": "UPCE", "value": "18274974"},
+    "assets/test_upc_a.png": {"format": "EAN13", "value": "0041935974561"},
+    "assets/test_upc_e.png": {"format": "UPCE", "value": "0182749000074"},
 }
 
 def test_read():

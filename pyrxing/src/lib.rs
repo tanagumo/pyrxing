@@ -38,17 +38,24 @@ struct DecodeResult {
     format: String,
 }
 
-impl From<reader_core::DecodeResult> for DecodeResult {
-    fn from(value: reader_core::DecodeResult) -> Self {
-        Self {
+impl TryFrom<reader_core::DecodeResult> for DecodeResult {
+    type Error = error::Error;
+
+    fn try_from(value: reader_core::DecodeResult) -> std::result::Result<Self, Self::Error> {
+        Ok(Self {
             text: value.text().to_owned(),
             points: value
                 .points()
                 .iter()
                 .map(|p| Point { x: p.x(), y: p.y() })
                 .collect::<Vec<_>>(),
-            format: format!("{}", value.format()),
-        }
+            format: format!(
+                "{}",
+                value
+                    .format()
+                    .map_err(|e| error::Error::Decode(e.to_string()))?
+            ),
+        })
     }
 }
 
@@ -212,8 +219,12 @@ impl TryFrom<_BarcodeFormat> for reader_core::BarcodeFormat {
             "Code93" => BF::Code93,
             "Code128" => BF::Code128,
             "DataBar" => BF::DataBar,
-            "DataBarExpanded" => BF::DataBarExpanded,
-            "DataBarLimited" => BF::DataBarLimited,
+            "DataBarExpanded" => BF::DataBarExp,
+            "DataBarExpandedStacked" => BF::DataBarExpStk,
+            "DataBarLimited" => BF::DataBarLtd,
+            "DataBarOmni" => BF::DataBarOmni,
+            "DataBarStacked" => BF::DataBarStk,
+            "DataBarStackedOmni" => BF::DataBarStkOmni,
             "DataMatrix" => BF::DataMatrix,
             "EAN8" => BF::EAN8,
             "EAN13" => BF::EAN13,
@@ -244,21 +255,25 @@ fn decode(obj: &Bound<'_, PyAny>, formats: Option<Vec<String>>, multi: bool) -> 
         .filter_map(|bf| TryInto::<reader_core::BarcodeFormat>::try_into(_BarcodeFormat(bf)).ok())
         .collect::<Vec<_>>();
 
-    let result = if multi {
-        reader_core::decode_multiple(gray_image, formats.as_slice()).map(|result| {
-            Decoded::Multi(
+    if multi {
+        reader_core::decode_multiple(gray_image, formats.as_slice())
+            .map_err(|e| error::Error::Decode(e.to_string()))
+            .and_then(|result| {
                 result
                     .into_iter()
-                    .map(DecodeResult::from)
-                    .collect::<Vec<_>>(),
-            )
-        })
+                    .map(|r| r.try_into())
+                    .collect::<std::result::Result<Vec<DecodeResult>, _>>()
+                    .map(Decoded::Multi)
+            })
     } else {
         reader_core::decode_single(gray_image, formats.as_slice())
-            .map(|opt| Decoded::Single(opt.map(DecodeResult::from)))
-    };
-
-    result.map_err(|e| error::Error::Decode(e.to_string()))
+            .map_err(|e| error::Error::Decode(e.to_string()))
+            .and_then(|opt| {
+                opt.map(|r| r.try_into())
+                    .transpose()
+                    .map(Decoded::Single)
+            })
+    }
 }
 
 #[pyfunction]

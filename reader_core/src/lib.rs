@@ -1,7 +1,21 @@
 use std::{borrow::Cow, cell::OnceCell, fmt::Display};
 
-use flagset::FlagSet;
+use thiserror::Error;
 use zxingcpp::{Barcode, BarcodeFormat as ZxBarcodeFormat, ImageFormat, ImageView, PointI};
+
+#[derive(Error, Debug)]
+pub enum Error {
+    #[error("Unsupported barcode format: {0}")]
+    UnsupportedFormat(String),
+
+    #[error("Failed to decode barcode: {0}")]
+    DecodeError(String),
+
+    #[error("Invalid input: {0}")]
+    InvalidInput(String),
+}
+
+pub type Result<T> = std::result::Result<T, Error>;
 
 #[derive(Debug, PartialEq, Clone, Copy)]
 pub struct Point {
@@ -36,25 +50,40 @@ impl From<PointI> for Point {
 #[non_exhaustive]
 pub enum BarcodeFormat {
     Aztec,
+    AztecCode,
+    AztecRune,
     Codabar,
+    Code128,
     Code39,
     Code93,
-    Code128,
+    CompactPDF417,
+    DXFilmEdge,
     DataBar,
-    DataBarExpanded,
-    DataBarLimited,
+    DataBarExp,
+    DataBarExpStk,
+    DataBarLtd,
+    DataBarOmni,
+    DataBarStk,
+    DataBarStkOmni,
     DataMatrix,
-    EAN8,
     EAN13,
+    EAN2,
+    EAN5,
+    EAN8,
+    EANUPC,
+    ISBN,
     ITF,
     MaxiCode,
+    MicroPDF417,
+    MicroQRCode,
     PDF417,
+    PZN,
     QRCode,
+    QRCodeModel1,
+    QRCodeModel2,
+    RMQRCode,
     UPCA,
     UPCE,
-    MicroQRCode,
-    RMQRCode,
-    DXFilmEdge,
 }
 
 impl Display for BarcodeFormat {
@@ -62,25 +91,40 @@ impl Display for BarcodeFormat {
         use BarcodeFormat::*;
         let v = match self {
             Aztec => "Aztec",
+            AztecCode => "AztecCode",
+            AztecRune => "AztecRune",
             Codabar => "Codabar",
             Code39 => "Code39",
             Code93 => "Code93",
             Code128 => "Code128",
+            CompactPDF417 => "CompactPDF417",
             DataBar => "DataBar",
-            DataBarExpanded => "DataBarExpanded",
-            DataBarLimited => "DataBarLimited",
+            DataBarExp => "DataBarExpanded",
+            DataBarExpStk => "DataBarExpandedStacked",
+            DataBarLtd => "DataBarLimited",
+            DataBarOmni => "DataBarOmni",
+            DataBarStk => "DataBarStacked",
+            DataBarStkOmni => "DataBarStackedOmni",
             DataMatrix => "DataMatrix",
+            DXFilmEdge => "DXFilmEdge",
+            EAN2 => "EAN2",
+            EAN5 => "EAN5",
             EAN8 => "EAN8",
             EAN13 => "EAN13",
+            EANUPC => "EANUPC",
+            ISBN => "ISBN",
             ITF => "ITF",
             MaxiCode => "MaxiCode",
+            MicroPDF417 => "MicroPDF417",
+            MicroQRCode => "MicroQRCode",
             PDF417 => "PDF417",
+            PZN => "PZN",
             QRCode => "QRCode",
+            QRCodeModel1 => "QRCodeModel1",
+            QRCodeModel2 => "QRCodeModel2",
+            RMQRCode => "RMQRCode",
             UPCA => "UPCA",
             UPCE => "UPCE",
-            MicroQRCode => "MicroQRCode",
-            RMQRCode => "RMQRCode",
-            DXFilmEdge => "DXFilmEdge",
         };
         write!(f, "{}", v)
     }
@@ -91,54 +135,86 @@ impl From<BarcodeFormat> for ZxBarcodeFormat {
         use BarcodeFormat::*;
         match value {
             Aztec => ZxBarcodeFormat::Aztec,
+            AztecCode => ZxBarcodeFormat::AztecCode,
+            AztecRune => ZxBarcodeFormat::AztecRune,
             Codabar => ZxBarcodeFormat::Codabar,
             Code39 => ZxBarcodeFormat::Code39,
             Code93 => ZxBarcodeFormat::Code93,
             Code128 => ZxBarcodeFormat::Code128,
+            CompactPDF417 => ZxBarcodeFormat::CompactPDF417,
             DataBar => ZxBarcodeFormat::DataBar,
-            DataBarExpanded => ZxBarcodeFormat::DataBarExpanded,
-            DataBarLimited => ZxBarcodeFormat::DataBarLimited,
+            DataBarExp => ZxBarcodeFormat::DataBarExp,
+            DataBarExpStk => ZxBarcodeFormat::DataBarExpStk,
+            DataBarLtd => ZxBarcodeFormat::DataBarLtd,
+            DataBarOmni => ZxBarcodeFormat::DataBarOmni,
+            DataBarStk => ZxBarcodeFormat::DataBarStk,
+            DataBarStkOmni => ZxBarcodeFormat::DataBarStkOmni,
             DataMatrix => ZxBarcodeFormat::DataMatrix,
+            DXFilmEdge => ZxBarcodeFormat::DXFilmEdge,
+            EAN2 => ZxBarcodeFormat::EAN2,
+            EAN5 => ZxBarcodeFormat::EAN5,
             EAN8 => ZxBarcodeFormat::EAN8,
             EAN13 => ZxBarcodeFormat::EAN13,
+            EANUPC => ZxBarcodeFormat::EANUPC,
+            ISBN => ZxBarcodeFormat::ISBN,
             ITF => ZxBarcodeFormat::ITF,
             MaxiCode => ZxBarcodeFormat::MaxiCode,
+            MicroPDF417 => ZxBarcodeFormat::MicroPDF417,
+            MicroQRCode => ZxBarcodeFormat::MicroQRCode,
             PDF417 => ZxBarcodeFormat::PDF417,
+            PZN => ZxBarcodeFormat::PZN,
             QRCode => ZxBarcodeFormat::QRCode,
+            QRCodeModel1 => ZxBarcodeFormat::QRCodeModel1,
+            QRCodeModel2 => ZxBarcodeFormat::QRCodeModel2,
+            RMQRCode => ZxBarcodeFormat::RMQRCode,
             UPCA => ZxBarcodeFormat::UPCA,
             UPCE => ZxBarcodeFormat::UPCE,
-            MicroQRCode => ZxBarcodeFormat::MicroQRCode,
-            RMQRCode => ZxBarcodeFormat::RMQRCode,
-            DXFilmEdge => ZxBarcodeFormat::DXFilmEdge,
         }
     }
 }
 
-impl From<ZxBarcodeFormat> for BarcodeFormat {
-    fn from(value: ZxBarcodeFormat) -> Self {
+impl TryFrom<ZxBarcodeFormat> for BarcodeFormat {
+    type Error = Error;
+
+    fn try_from(value: ZxBarcodeFormat) -> Result<Self> {
         use ZxBarcodeFormat::*;
         match value {
-            Aztec => BarcodeFormat::Aztec,
-            Codabar => BarcodeFormat::Codabar,
-            Code39 => BarcodeFormat::Code39,
-            Code93 => BarcodeFormat::Code93,
-            Code128 => BarcodeFormat::Code128,
-            DataBar => BarcodeFormat::DataBar,
-            DataBarExpanded => BarcodeFormat::DataBarExpanded,
-            DataBarLimited => BarcodeFormat::DataBarLimited,
-            DataMatrix => BarcodeFormat::DataMatrix,
-            EAN8 => BarcodeFormat::EAN8,
-            EAN13 => BarcodeFormat::EAN13,
-            ITF => BarcodeFormat::ITF,
-            MaxiCode => BarcodeFormat::MaxiCode,
-            PDF417 => BarcodeFormat::PDF417,
-            QRCode => BarcodeFormat::QRCode,
-            UPCA => BarcodeFormat::UPCA,
-            UPCE => BarcodeFormat::UPCE,
-            MicroQRCode => BarcodeFormat::MicroQRCode,
-            RMQRCode => BarcodeFormat::RMQRCode,
-            DXFilmEdge => BarcodeFormat::DXFilmEdge,
-            other => panic!("unexpected code: {}", other),
+            Aztec => Ok(BarcodeFormat::Aztec),
+            AztecCode => Ok(BarcodeFormat::AztecCode),
+            AztecRune => Ok(BarcodeFormat::AztecRune),
+            Codabar => Ok(BarcodeFormat::Codabar),
+            Code39 => Ok(BarcodeFormat::Code39),
+            Code93 => Ok(BarcodeFormat::Code93),
+            Code128 => Ok(BarcodeFormat::Code128),
+            CompactPDF417 => Ok(BarcodeFormat::CompactPDF417),
+            DataBar => Ok(BarcodeFormat::DataBar),
+            DataBarExp => Ok(BarcodeFormat::DataBarExp),
+            DataBarExpStk => Ok(BarcodeFormat::DataBarExpStk),
+            DataBarLtd => Ok(BarcodeFormat::DataBarLtd),
+            DataBarOmni => Ok(BarcodeFormat::DataBarOmni),
+            DataBarStk => Ok(BarcodeFormat::DataBarStk),
+            DataBarStkOmni => Ok(BarcodeFormat::DataBarStkOmni),
+            DataMatrix => Ok(BarcodeFormat::DataMatrix),
+            DXFilmEdge => Ok(BarcodeFormat::DXFilmEdge),
+            EAN2 => Ok(BarcodeFormat::EAN2),
+            EAN5 => Ok(BarcodeFormat::EAN5),
+            EAN8 => Ok(BarcodeFormat::EAN8),
+            EAN13 => Ok(BarcodeFormat::EAN13),
+            EANUPC => Ok(BarcodeFormat::EANUPC),
+            ISBN => Ok(BarcodeFormat::ISBN),
+            ITF => Ok(BarcodeFormat::ITF),
+            MaxiCode => Ok(BarcodeFormat::MaxiCode),
+            MicroPDF417 => Ok(BarcodeFormat::MicroPDF417),
+            MicroQRCode => Ok(BarcodeFormat::MicroQRCode),
+            PDF417 => Ok(BarcodeFormat::PDF417),
+            PZN => Ok(BarcodeFormat::PZN),
+            QRCode => Ok(BarcodeFormat::QRCode),
+            QRCodeModel1 => Ok(BarcodeFormat::QRCodeModel1),
+            QRCodeModel2 => Ok(BarcodeFormat::QRCodeModel2),
+            RMQRCode => Ok(BarcodeFormat::RMQRCode),
+            UPCA => Ok(BarcodeFormat::UPCA),
+            UPCE => Ok(BarcodeFormat::UPCE),
+            other => Err(Error::UnsupportedFormat(format!("{}", other))),
         }
     }
 }
@@ -190,10 +266,14 @@ impl DecodeResult {
         })
     }
 
-    pub fn format(&self) -> BarcodeFormat {
-        *self
-            .cached_format
-            .get_or_init(|| self.inner.format().into())
+    pub fn format(&self) -> Result<BarcodeFormat> {
+        if let Some(format) = self.cached_format.get() {
+            Ok(*format)
+        } else {
+            let format = self.inner.format().try_into()?;
+            let _ = self.cached_format.set(format);
+            Ok(format)
+        }
     }
 
     pub fn points(&self) -> [Point; 4] {
@@ -243,28 +323,29 @@ fn decode<'a>(
     image: GrayImage<'a>,
     formats: &[BarcodeFormat],
     multi: bool,
-) -> anyhow::Result<Vec<Barcode>> {
-    let format: FlagSet<ZxBarcodeFormat> = if formats.is_empty() {
-        Into::<FlagSet<ZxBarcodeFormat>>::into(ZxBarcodeFormat::Any)
+) -> Result<Vec<Barcode>> {
+    let mut read_barcodes = if formats.is_empty() {
+        zxingcpp::read().formats(&[ZxBarcodeFormat::All])
     } else {
-        let mut flag = Into::<FlagSet<ZxBarcodeFormat>>::into(ZxBarcodeFormat::None);
-        for f in formats {
-            flag |= Into::<ZxBarcodeFormat>::into(*f);
+        let mut zx_formats_buf = [ZxBarcodeFormat::None; 32];
+        for (i, f) in formats.iter().enumerate() {
+            zx_formats_buf[i] = (*f).into();
         }
-        flag
+        zxingcpp::read().formats(&zx_formats_buf[..formats.len()])
     };
 
-    let mut read_barcodes = zxingcpp::read().formats(format);
     if !multi {
         read_barcodes.set_max_number_of_symbols(1);
     }
-    Ok(read_barcodes.from(Into::<ImageView>::into(&image))?)
+    read_barcodes
+        .from(Into::<ImageView>::into(&image))
+        .map_err(|e| Error::DecodeError(e.to_string()))
 }
 
 pub fn decode_multiple<'a>(
     image: GrayImage<'a>,
     formats: &[BarcodeFormat],
-) -> anyhow::Result<Vec<DecodeResult>> {
+) -> Result<Vec<DecodeResult>> {
     let barcodes = decode(image, formats, true)?;
     Ok(barcodes
         .into_iter()
@@ -275,7 +356,7 @@ pub fn decode_multiple<'a>(
 pub fn decode_single<'a>(
     image: GrayImage<'a>,
     formats: &[BarcodeFormat],
-) -> anyhow::Result<Option<DecodeResult>> {
+) -> Result<Option<DecodeResult>> {
     match decode(image, formats, false) {
         Ok(mut results) => {
             if results.is_empty() {
@@ -285,5 +366,17 @@ pub fn decode_single<'a>(
             }
         }
         Err(e) => Err(e),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_barcode_format_display() {
+        assert_eq!(format!("{}", BarcodeFormat::DataBarExp), "DataBarExpanded");
+        assert_eq!(format!("{}", BarcodeFormat::DataBarLtd), "DataBarLimited");
+        assert_eq!(format!("{}", BarcodeFormat::DataBarExpStk), "DataBarExpandedStacked");
     }
 }

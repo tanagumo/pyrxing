@@ -41,3 +41,9 @@ name = "pyrxing"
 
 [project.urls]
 "Homepage" = "https://github.com/tanagumo/pyrxing"
+
+[dependency-groups]
+dev = [
+    "pytest>=9.0.0",
+    "pillow>=12.0.0",
+]
