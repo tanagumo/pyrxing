@@ -150,13 +150,6 @@ barcode = read_barcode(Image.open("example.png"))
 
 ---
 
-## 🛠 Planned Features
-
-* [ ] More platform wheels (expanding support for other OS/Python combinations)
-* [ ] Additional barcode format configuration options
-
----
-
 ## 🚫 Not Planned
 
 * ❌ Barcode generation
