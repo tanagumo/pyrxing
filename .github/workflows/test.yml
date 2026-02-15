@@ -8,7 +8,7 @@ permissions:
 
 jobs:
   pytest:
-    runs-on: ubuntu-22.04
+    runs-on: ubuntu-24.04
 
     steps:
       - uses: actions/checkout@v4
@@ -25,6 +25,8 @@ jobs:
           cp README.md pyrxing/README.md
       - name: Build wheels
         uses: PyO3/maturin-action@v1
+        env:
+          CXXFLAGS: "-std=c++20"
         with:
           working-directory: pyrxing
           target: x86_64
