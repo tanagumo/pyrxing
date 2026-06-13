@@ -12,7 +12,7 @@ use reader_core::{self, GrayImage};
 
 type Result<T> = std::result::Result<T, error::Error>;
 
-#[pyclass(module = "pyrxing")]
+#[pyclass(module = "pyrxing", skip_from_py_object)]
 #[derive(Clone)]
 struct Point {
     #[pyo3(get)]
@@ -108,7 +108,7 @@ impl<'a, 'b: 'a> TryInto<GrayImage<'a>> for &'a ImageSource<'b> {
                 width,
                 height,
             } => {
-                let py_bytes = data.downcast::<PyBytes>().unwrap().as_bytes();
+                let py_bytes = data.cast::<PyBytes>().unwrap().as_bytes();
                 Ok(GrayImage::new(py_bytes, *width, *height))
             }
         }
@@ -153,10 +153,7 @@ fn get_image_source<'a>(obj: &Bound<'a, PyAny>) -> Result<ImageSource<'a>> {
         match &*mode {
             "L" => {}
             "RGB" | "RGBA" | "P" | "1" => {
-                converted_opt = Some(
-                    obj.call_method1("convert", ("L",))?
-                        .extract::<Bound<'a, PyAny>>()?,
-                );
+                converted_opt = Some(obj.call_method1("convert", ("L",))?);
             }
             _ => {
                 let message = format!(
