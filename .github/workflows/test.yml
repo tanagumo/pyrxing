@@ -32,8 +32,8 @@ jobs:
           target: x86_64
           args: --out dist
           sccache: true
-      - name: install requirements
+      - name: install dependencies
         run: |
           find pyrxing/dist -name '*.whl' | xargs pip install
-          cd pyrxing && pip install -r requirements.txt
+          cd pyrxing && pip install --group dev
           pytest
