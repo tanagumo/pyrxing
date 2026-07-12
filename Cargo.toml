@@ -3,7 +3,7 @@ members = [ "pyrxing", "reader_core"]
 resolver = "3"
 
 [workspace.package]
-version = "0.5.1"
+version = "0.6.0"
 authors = ["Takanobu Nagumo <nagumo5683@gmail.com>"]
 license = "Apache-2.0"
 edition = "2024"
@@ -13,3 +13,4 @@ opt-level = 3
 lto = true
 codegen-units = 1
 debug = false
+strip = true
