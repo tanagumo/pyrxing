@@ -8,7 +8,7 @@ This library offers efficient barcode scanning in pure Python environments, with
 
 ## 🚀 Features
 
-* ⚡ **High performance**: Powered by zxing-cpp 0.5.0 C++ library through optimized Rust bindings with excellent barcode detection performance
+* ⚡ **High performance**: Powered by zxing-cpp 0.5.2 C++ library through optimized Rust bindings with excellent barcode detection performance
 * 🐍 **Python-native API**: Simple interface with just two functions: `read_barcode` and `read_barcodes`
 * 📦 **No system dependencies**: No need for zbar, JRE, or any external libraries
 * 🏗 **Alpine Linux compatible**: Pre-built `musllinux` wheels available (no build required)
