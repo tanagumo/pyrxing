@@ -1,6 +1,6 @@
 # pyrxing
 
-**pyrxing** is a fast, dependency-free Python barcode/QR code reader built using [zxing-cpp](https://github.com/zxing-cpp/zxing-cpp) Rust bindings via [PyO3](https://github.com/PyO3/pyo3).
+**pyrxing** is a fast, dependency-free Python barcode/QR code reader for image paths, Pillow images, and NumPy/OpenCV arrays. It is built using [zxing-cpp](https://github.com/zxing-cpp/zxing-cpp) Rust bindings via [PyO3](https://github.com/PyO3/pyo3).
 
 This library offers efficient barcode scanning in pure Python environments, with pre-built native wheels — including full support for **Alpine Linux** and `musl`-based systems where the official [zxing-cpp Python package](https://pypi.org/project/zxing-cpp/) requires additional build steps.
 
@@ -10,6 +10,7 @@ This library offers efficient barcode scanning in pure Python environments, with
 
 * ⚡ **High performance**: Powered by zxing-cpp 0.5.2 C++ library through optimized Rust bindings with excellent barcode detection performance
 * 🐍 **Python-native API**: Simple interface with just two functions: `read_barcode` and `read_barcodes`
+* 🔢 **NumPy and OpenCV support**: Decode `uint8` image arrays directly, including non-contiguous views
 * 📦 **No system dependencies**: No need for zbar, JRE, or any external libraries
 * 🏗 **Alpine Linux compatible**: Pre-built `musllinux` wheels available (no build required)
 * 🧠 **Type hinting & autocompletion**: Includes `.pyi` stub files with 32 barcode format variants
@@ -144,9 +145,35 @@ You can also pass an object that conforms to the `ImageProtocol` instead of a pa
 ```python
 from pyrxing import read_barcode
 from PIL import Image
+
 # Read a single barcode from PIL.Image.Image object
 barcode = read_barcode(Image.open("example.png"))
 ```
+
+NumPy-compatible `uint8` arrays are accepted in grayscale (`H, W`) and one-, three-, or four-channel (`H, W, C`) shapes. Three-channel arrays may use RGB or OpenCV's BGR order; pyrxing uses a channel-order-neutral grayscale conversion. Four-channel arrays are handled the same way with alpha ignored. Sliced and other non-contiguous arrays are supported.
+
+This example generates a QR code with optional OpenCV, then passes the resulting NumPy array directly to the built pyrxing library:
+
+```python
+import cv2
+
+from pyrxing import read_barcode
+
+payload = "Hello from OpenCV"
+qr_code = cv2.QRCodeEncoder_create().encode(payload)
+qr_code = cv2.copyMakeBorder(
+  qr_code, 4, 4, 4, 4, cv2.BORDER_CONSTANT, value=255
+)
+qr_code = cv2.resize(
+  qr_code, None, fx=8, fy=8, interpolation=cv2.INTER_NEAREST
+)
+
+barcode = read_barcode(qr_code, formats=["QRCode"])
+assert barcode is not None
+assert barcode.text == payload
+```
+
+NumPy and OpenCV are integrations, not runtime dependencies of pyrxing. Install them separately when needed.
 
 ---
 
@@ -221,6 +248,13 @@ class ImageProtocol(Protocol):
     def load(self): ...
 
 
+class ArrayProtocol(Protocol):
+    @property
+    def __array_interface__(self) -> dict[str, Any]: ...
+
+    def tobytes(self) -> bytes: ...
+
+
 class Error(Exception):
     """Base class of every exception the module raises."""
 
@@ -259,8 +293,8 @@ class DecodeResult:
     def format(self) -> str: ...
 
 
-def read_barcode(image: str | os.PathLike[str] | ImageProtocol, *, formats: list[BarcodeFormat] | None = None) -> DecodeResult | None: ...
-def read_barcodes(image: str | os.PathLike[str] | ImageProtocol, *, formats: list[BarcodeFormat] | None = None) -> list[DecodeResult]: ...
+def read_barcode(image: str | os.PathLike[str] | ImageProtocol | ArrayProtocol, *, formats: list[BarcodeFormat] | None = None) -> DecodeResult | None: ...
+def read_barcodes(image: str | os.PathLike[str] | ImageProtocol | ArrayProtocol, *, formats: list[BarcodeFormat] | None = None) -> list[DecodeResult]: ...
 ```
 
 ---

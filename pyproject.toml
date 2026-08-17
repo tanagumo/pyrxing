@@ -49,6 +49,8 @@ name = "pyrxing"
 
 [dependency-groups]
 dev = [
+    "numpy>=2.0.0",
+    "opencv-python-headless>=4.10.0.84",
     "pytest>=9.0.3",
     "pillow>=12.3.0",
 ]
