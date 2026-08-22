@@ -68,8 +68,7 @@ enum ImageSource<'a> {
         height: u32,
     },
     ImageProtocolDataView {
-        _holder: Bound<'a, PyAny>,
-        data: Bound<'a, PyAny>,
+        data: Bound<'a, PyBytes>,
         width: u32,
         height: u32,
     },
@@ -100,17 +99,10 @@ impl<'a, 'b: 'a> TryInto<GrayImage<'a>> for &'a ImageSource<'b> {
                 height,
             } => Ok(GrayImage::new(data, *width, *height)?),
             ImageSource::ImageProtocolDataView {
-                // Holds the __array_interface__ object to maintain its reference count.
-                // Python's __array_interface__ property may creates temporary view objects
-                // that get GC'd immediately if not referenced, invalidating data.
-                _holder,
                 data,
                 width,
                 height,
-            } => {
-                let py_bytes = data.cast::<PyBytes>().unwrap().as_bytes();
-                Ok(GrayImage::new(py_bytes, *width, *height)?)
-            }
+            } => Ok(GrayImage::new(data.as_bytes(), *width, *height)?),
         }
     }
 }
@@ -175,26 +167,20 @@ fn get_image_source<'a>(obj: &Bound<'a, PyAny>) -> Result<ImageSource<'a>> {
         let width = target_obj.getattr("width")?.extract::<u32>()?;
         let height = target_obj.getattr("height")?.extract::<u32>()?;
 
-        if target_obj.hasattr("__array_interface__")? {
-            let ai = target_obj.getattr("__array_interface__")?;
-            let type_str = ai.get_item("typestr")?.extract::<PyBackedStr>()?;
-            if type_str == "|u1" {
-                let data = ai.get_item("data")?;
-                return Ok(ImageSource::ImageProtocolDataView {
-                    _holder: ai,
-                    data,
-                    width,
-                    height,
-                });
-            }
+        // Borrowing the `bytes` from `tobytes` avoids copying the pixels into a `Vec`.
+        // Any other buffer still goes through `extract`, at the cost of that copy.
+        match target_obj.call_method0("tobytes")?.cast_into::<PyBytes>() {
+            Ok(data) => Ok(ImageSource::ImageProtocolDataView {
+                data,
+                width,
+                height,
+            }),
+            Err(err) => Ok(ImageSource::ImageProtocolData {
+                data: err.into_inner().extract::<Vec<u8>>()?,
+                width,
+                height,
+            }),
         }
-
-        let data = target_obj.call_method0("tobytes")?.extract::<Vec<u8>>()?;
-        Ok(ImageSource::ImageProtocolData {
-            data,
-            width,
-            height,
-        })
     }
 }
 

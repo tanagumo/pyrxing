@@ -1,3 +1,4 @@
+import ctypes
 from typing import Self
 
 import pytest
@@ -106,6 +107,58 @@ def test_read_barcode_rejects_a_size_disagreeing_with_the_pixel_data() -> None:
 
     with pytest.raises(ValueError, match="expected 122500, got 122499"):
         pyrxing.read_barcode(truncated)
+
+
+class PointerInterfaceImage:
+    """An ImageProtocol implementation exposing the NumPy form of __array_interface__.
+
+    NumPy reports `data` as a (address, read-only) pair rather than a bytes object.
+    """
+
+    mode: str = "L"
+
+    def __init__(self, pil: Image.Image) -> None:
+        self._data = pil.convert("L").tobytes()
+        self.width = pil.width
+        self.height = pil.height
+
+    def tobytes(self) -> bytes | bytearray:
+        return self._data
+
+    def convert(self, mode: str) -> Self:
+        return self
+
+    def load(self) -> None:
+        pass
+
+    @property
+    def __array_interface__(self) -> dict[str, object]:
+        address = ctypes.cast(ctypes.c_char_p(self._data), ctypes.c_void_p).value
+        return {
+            "version": 3,
+            "typestr": "|u1",
+            "shape": (self.height, self.width),
+            "data": (address, True),
+        }
+
+
+class BytearrayImage(PointerInterfaceImage):
+    """An ImageProtocol implementation returning a buffer other than bytes."""
+
+    def tobytes(self) -> bytearray:
+        return bytearray(self._data)
+
+
+def test_read_barcode_accepts_a_pointer_shaped_array_interface() -> None:
+    image = PointerInterfaceImage(Image.open(QR_CODE))
+
+    assert pyrxing.read_barcode(image).text == QR_CODE_VALUE
+
+
+def test_read_barcode_accepts_a_buffer_other_than_bytes() -> None:
+    image = BytearrayImage(Image.open(QR_CODE))
+
+    assert pyrxing.read_barcode(image).text == QR_CODE_VALUE
 
 
 def test_read_barcode_rejects_a_pixel_count_beyond_u32() -> None:
