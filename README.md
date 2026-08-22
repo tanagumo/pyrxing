@@ -161,6 +161,7 @@ barcode = read_barcode(Image.open("example.png"))
 For full API and type hints, see `pyrxing.pyi` or use your IDE's autocomplete.
 
 ```python
+import os
 from typing import Any, Literal, Protocol
 
 BarcodeFormat = Literal[
@@ -220,9 +221,25 @@ class ImageProtocol(Protocol):
     def load(self): ...
 
 
-class BarcodeDecodeError(Exception): ...
+class Error(Exception):
+    """Base class of every exception the module raises."""
 
-class ImageError(Exception): ...
+
+class BarcodeDecodeError(Error):
+    """The reader backend failed to decode the image."""
+
+
+class ImageError(Error):
+    """The image cannot be used: unreadable, of an unsupported mode, or malformed."""
+
+
+class UnsupportedFormatError(Error):
+    """A requested barcode format name is not supported."""
+
+    @property
+    def format(self) -> str:
+        """The rejected barcode format name."""
+
 
 class Point:
     @property
@@ -242,8 +259,8 @@ class DecodeResult:
     def format(self) -> str: ...
 
 
-def read_barcode(image: str | ImageProtocol, *, formats: list[BarcodeFormat] | None = None) -> DecodeResult | None: ...
-def read_barcodes(image: str | ImageProtocol, *, formats: list[BarcodeFormat] | None = None) -> list[DecodeResult]: ...
+def read_barcode(image: str | os.PathLike[str] | ImageProtocol, *, formats: list[BarcodeFormat] | None = None) -> DecodeResult | None: ...
+def read_barcodes(image: str | os.PathLike[str] | ImageProtocol, *, formats: list[BarcodeFormat] | None = None) -> list[DecodeResult]: ...
 ```
 
 ---

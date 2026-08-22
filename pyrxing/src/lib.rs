@@ -2,11 +2,12 @@ mod error;
 
 use std::fs::File;
 use std::io::BufReader;
+use std::path::PathBuf;
 
 use image::ImageReader;
 use pyo3::prelude::*;
 use pyo3::pybacked::PyBackedStr;
-use pyo3::types::PyBytes;
+use pyo3::types::{PyBytes, PyString};
 
 use reader_core::{self, GrayImage};
 
@@ -61,7 +62,7 @@ impl TryFrom<reader_core::DecodeResult> for DecodeResult {
 
 #[derive(Debug)]
 enum ImageSource<'a> {
-    Path(PyBackedStr),
+    Path(PathBuf),
     ImageProtocolData {
         data: Vec<u8>,
         width: u32,
@@ -80,7 +81,7 @@ impl<'a, 'b: 'a> TryInto<GrayImage<'a>> for &'a ImageSource<'b> {
     fn try_into(self) -> std::result::Result<GrayImage<'a>, Self::Error> {
         match self {
             ImageSource::Path(path) => {
-                let file = File::open(&**path)?;
+                let file = File::open(path)?;
                 let file_size = file.metadata()?.len();
 
                 let sizes = [file_size as usize, 10_000_000];
@@ -108,11 +109,9 @@ impl<'a, 'b: 'a> TryInto<GrayImage<'a>> for &'a ImageSource<'b> {
 }
 
 fn get_image_source<'a>(obj: &Bound<'a, PyAny>) -> Result<ImageSource<'a>> {
-    let type_obj = obj.get_type();
-    let type_name = type_obj.name()?;
-
-    if type_name == "str" {
-        Ok(ImageSource::Path(obj.extract::<PyBackedStr>()?))
+    // `os.fspath` accepts a str as well as any `__fspath__` implementation.
+    if obj.is_instance_of::<PyString>() || obj.hasattr("__fspath__")? {
+        Ok(ImageSource::Path(obj.extract::<PathBuf>()?))
     } else {
         let mut conform_to_image_protocol = true;
         if !obj.hasattr("mode")?
@@ -132,8 +131,8 @@ fn get_image_source<'a>(obj: &Bound<'a, PyAny>) -> Result<ImageSource<'a>> {
             }
         }
         if !conform_to_image_protocol {
-            return Err(error::Error::value_error(
-                "value must be either str or conform to ImageProtocol",
+            return Err(error::Error::type_error(
+                "image must be a str, os.PathLike or ImageProtocol value",
             ));
         }
 
@@ -196,7 +195,7 @@ fn decode(obj: &Bound<'_, PyAny>, formats: Option<Vec<String>>, multi: bool) -> 
         .into_iter()
         .map(|name| {
             name.parse::<reader_core::BarcodeFormat>()
-                .map_err(|e| error::Error::value_error(e.to_string()))
+                .map_err(|_| error::Error::Python(error::unsupported_format_error(name)))
         })
         .collect::<std::result::Result<Vec<_>, _>>()?;
 
@@ -251,8 +250,10 @@ fn read_barcodes(
 
 #[pymodule]
 fn pyrxing(m: &Bound<'_, PyModule>) -> PyResult<()> {
+    m.add_class::<error::PyBaseError>()?;
     m.add_class::<error::PyBarcodeDecodeError>()?;
     m.add_class::<error::PyImageError>()?;
+    m.add_class::<error::PyUnsupportedFormatError>()?;
     m.add_class::<DecodeResult>()?;
     m.add_function(wrap_pyfunction!(read_barcode, m)?)?;
     m.add_function(wrap_pyfunction!(read_barcodes, m)?)?;

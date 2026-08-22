@@ -9,7 +9,7 @@ from PIL import Image
 import pyrxing
 
 
-ASSETS = {
+ASSETS: dict[str, dict[str, str]] = {
     "assets/test_aztec.png": {"format": "MicroQRCode", "value": "Code Code Data"},
     "assets/test_codabar.png": {"format": "Codabar", "value": "A-12656-D"},
     "assets/test_code128.png": {
@@ -59,7 +59,7 @@ ASSETS = {
     "assets/test_upc_e.png": {"format": "UPCE", "value": "0182749000074"},
 }
 
-def test_read():
+def test_read() -> None:
     for path, v in ASSETS.items():
         i = Image.open(path)
         res = pyrxing.read_barcode(i)
@@ -195,13 +195,29 @@ def test_stub_declares_only_names_the_extension_accepts() -> None:
 
 
 @pytest.mark.parametrize(
-    "formats", [["Bogus"], ["QRCode", "Bogus"], ["Bogus", "AlsoBogus"], ["qrcode"]]
+    ("formats", "reported"),
+    [
+        (["Bogus"], "Bogus"),
+        (["QRCode", "Bogus"], "Bogus"),
+        (["Bogus", "AlsoBogus"], "Bogus"),
+        (["qrcode"], "qrcode"),
+    ],
 )
-def test_read_barcode_rejects_an_unknown_format_name(formats: list[str]) -> None:
+def test_read_barcode_rejects_an_unknown_format_name(
+    formats: list[str], reported: str
+) -> None:
     image = Image.open(QR_CODE)
 
-    with pytest.raises(ValueError, match="Unsupported barcode format"):
+    with pytest.raises(pyrxing.UnsupportedFormatError) as caught:
         pyrxing.read_barcode(image, formats=formats)
+
+    assert caught.value.format == reported
+    assert reported in str(caught.value)
+
+
+def test_unsupported_format_error_derives_from_the_module_base() -> None:
+    assert issubclass(pyrxing.UnsupportedFormatError, pyrxing.Error)
+    assert not issubclass(pyrxing.UnsupportedFormatError, pyrxing.ImageError)
 
 
 @pytest.mark.parametrize("formats", [None, []])
@@ -223,7 +239,7 @@ def test_read_barcode_rejects_a_size_disagreeing_with_the_pixel_data() -> None:
     image = Image.open(QR_CODE).convert("L")
     truncated = SizedImage(image.width, image.height, image.tobytes()[:-1])
 
-    with pytest.raises(ValueError, match="expected 122500, got 122499"):
+    with pytest.raises(pyrxing.ImageError, match="expected 122500, got 122499"):
         pyrxing.read_barcode(truncated)
 
 
@@ -282,5 +298,99 @@ def test_read_barcode_accepts_a_buffer_other_than_bytes() -> None:
 def test_read_barcode_rejects_a_pixel_count_beyond_u32() -> None:
     # 0x80000000 * 2 is 2**32, so a wrapping multiplication would report zero pixels
     # and let an empty buffer through.
-    with pytest.raises(ValueError, match="expected 4294967296, got 0"):
+    with pytest.raises(pyrxing.ImageError, match="expected 4294967296, got 0"):
         pyrxing.read_barcode(SizedImage(0x80000000, 2, b""))
+
+
+def test_module_exceptions_derive_from_the_module_base() -> None:
+    assert issubclass(pyrxing.ImageError, pyrxing.Error)
+    assert issubclass(pyrxing.BarcodeDecodeError, pyrxing.Error)
+    assert issubclass(pyrxing.Error, Exception)
+
+
+def test_image_error_carries_its_message() -> None:
+    image = Image.open(QR_CODE).convert("CMYK")
+
+    with pytest.raises(pyrxing.Error) as caught:
+        pyrxing.read_barcode(image)
+
+    assert isinstance(caught.value, pyrxing.ImageError)
+    assert "unsupported mode(CMYK)" in str(caught.value)
+    assert not hasattr(caught.value, "message")
+
+
+@pytest.mark.parametrize("factory", [str, pathlib.Path])
+def test_read_barcode_accepts_a_path_like_argument(factory) -> None:
+    assert pyrxing.read_barcode(factory(QR_CODE)).text == QR_CODE_VALUE
+
+
+def test_read_barcode_accepts_an_fspath_implementation() -> None:
+    class PathHolder:
+        def __fspath__(self) -> str:
+            return QR_CODE
+
+    assert pyrxing.read_barcode(PathHolder()).text == QR_CODE_VALUE
+
+
+@pytest.mark.parametrize(
+    "image", [123, None, b"assets/test_qr_code.png", object(), ["assets/test_qr_code.png"]]
+)
+def test_read_barcode_rejects_an_argument_of_another_type(image: object) -> None:
+    with pytest.raises(TypeError, match="str, os.PathLike or ImageProtocol"):
+        pyrxing.read_barcode(image)
+
+
+def test_read_barcode_rejects_an_incomplete_image_protocol() -> None:
+    class WithoutMode:
+        width = 4
+        height = 3
+
+        def tobytes(self) -> bytes:
+            return bytes(12)
+
+        def convert(self, mode: str) -> Self:
+            return self
+
+        def load(self) -> None:
+            pass
+
+    with pytest.raises(TypeError):
+        pyrxing.read_barcode(WithoutMode())
+
+
+def test_read_barcode_rejects_a_dimension_beyond_the_reader_limit() -> None:
+    image = SizedImage(0x10000, 1, bytes(0x10000))
+
+    with pytest.raises(pyrxing.ImageError, match="65535"):
+        pyrxing.read_barcode(image)
+
+
+def stub_exception_bases() -> dict[str, str]:
+    """Returns the base class each exception of pyrxing.pyi declares."""
+    stub = pathlib.Path(__file__).with_name("pyrxing.pyi").read_text()
+    return dict(re.findall(r"^class (Error|\w+Error)\((\w+)\):", stub, re.MULTILINE))
+
+
+def test_stub_declares_the_exception_hierarchy() -> None:
+    declared = stub_exception_bases()
+    assert declared == {
+        "Error": "Exception",
+        "BarcodeDecodeError": "Error",
+        "ImageError": "Error",
+        "UnsupportedFormatError": "Error",
+    }
+
+    for name, base in declared.items():
+        actual = getattr(pyrxing, name)
+        expected = Exception if base == "Exception" else getattr(pyrxing, base)
+        assert actual.__bases__ == (expected,), name
+
+
+def test_readme_repeats_the_type_stub() -> None:
+    def api_block(path: pathlib.Path) -> str:
+        text = path.read_text()
+        return text.split("class ImageProtocol(Protocol):", 1)[1].split("def read_barcode", 1)[0]
+
+    here = pathlib.Path(__file__).parent
+
+    assert api_block(here / "README.md") == api_block(here / "pyrxing.pyi")
