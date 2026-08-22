@@ -363,3 +363,34 @@ def test_read_barcode_rejects_a_dimension_beyond_the_reader_limit() -> None:
 
     with pytest.raises(pyrxing.ImageError, match="65535"):
         pyrxing.read_barcode(image)
+
+
+def stub_exception_bases() -> dict[str, str]:
+    """Returns the base class each exception of pyrxing.pyi declares."""
+    stub = pathlib.Path(__file__).with_name("pyrxing.pyi").read_text()
+    return dict(re.findall(r"^class (Error|\w+Error)\((\w+)\):", stub, re.MULTILINE))
+
+
+def test_stub_declares_the_exception_hierarchy() -> None:
+    declared = stub_exception_bases()
+    assert declared == {
+        "Error": "Exception",
+        "BarcodeDecodeError": "Error",
+        "ImageError": "Error",
+        "UnsupportedFormatError": "Error",
+    }
+
+    for name, base in declared.items():
+        actual = getattr(pyrxing, name)
+        expected = Exception if base == "Exception" else getattr(pyrxing, base)
+        assert actual.__bases__ == (expected,), name
+
+
+def test_readme_repeats_the_type_stub() -> None:
+    def api_block(path: pathlib.Path) -> str:
+        text = path.read_text()
+        return text.split("class ImageProtocol(Protocol):", 1)[1].split("def read_barcode", 1)[0]
+
+    here = pathlib.Path(__file__).parent
+
+    assert api_block(here / "README.md") == api_block(here / "pyrxing.pyi")
