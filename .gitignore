@@ -24,3 +24,13 @@ Cargo.lock
 **/node_modules/
 .DS_Store
 Thumbs.db
+
+# Python
+__pycache__/
+*.py[cod]
+*.so
+.python-version
+.pytest_cache/
+.venv/
+dist/
+*.egg-info/

@@ -36,6 +36,8 @@ classifiers = [
 ]
 
 [tool.maturin]
+manifest-path = "pyrxing/Cargo.toml"
+include = [{ path = "pyrxing.pyi", format = "sdist" }]
 features = ["pyo3/extension-module"]
 name = "pyrxing"
 

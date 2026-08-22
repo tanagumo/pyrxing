@@ -36,22 +36,17 @@ jobs:
       - name: Cache Rust dependencies
         uses: Swatinem/rust-cache@v2
         with:
-          workspaces: pyrxing
           key: test-${{ runner.os }}-x86_64
-      - name: copy README
-        run: |
-          cp README.md pyrxing/README.md
       - name: Build wheels
         uses: PyO3/maturin-action@v1
         env:
           CXXFLAGS: "-std=c++20"
         with:
-          working-directory: pyrxing
           target: x86_64
           args: --out dist
           sccache: true
       - name: install dependencies
         run: |
-          find pyrxing/dist -name '*.whl' | xargs pip install
-          cd pyrxing && pip install --group dev
+          find dist -name '*.whl' | xargs pip install
+          pip install --group dev
           pytest
