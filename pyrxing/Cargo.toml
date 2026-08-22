@@ -12,5 +12,8 @@ crate-type = ["cdylib"]
 
 [dependencies]
 reader_core = { path = "../reader_core" }
-pyo3 = { version = "0.29.0", features = ["extension-module"] }
+pyo3 = { version = "0.29.0" }
 image = { version = "0.25.6", default-features = false, features = ["png", "jpeg", "gif", "bmp", "tiff", "webp"] }
+
+[dev-dependencies]
+pyo3 = { version = "0.29.0", features = ["auto-initialize"] }
