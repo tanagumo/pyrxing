@@ -327,11 +327,11 @@ fn decode<'a>(
     let mut read_barcodes = if formats.is_empty() {
         zxingcpp::read().formats(&[ZxBarcodeFormat::All])
     } else {
-        let mut zx_formats_buf = [ZxBarcodeFormat::None; 32];
-        for (i, f) in formats.iter().enumerate() {
-            zx_formats_buf[i] = (*f).into();
-        }
-        zxingcpp::read().formats(&zx_formats_buf[..formats.len()])
+        let zx_formats = formats
+            .iter()
+            .map(|f| ZxBarcodeFormat::from(*f))
+            .collect::<Vec<_>>();
+        zxingcpp::read().formats(zx_formats.as_slice())
     };
 
     if !multi {
@@ -373,10 +373,27 @@ pub fn decode_single<'a>(
 mod tests {
     use super::*;
 
+    /// Renders `text` as a barcode and returns the pixels along with the size.
+    fn render(format: BarcodeFormat, text: &str) -> (Vec<u8>, u32, u32) {
+        let barcode = zxingcpp::create(format.into()).from_str(text).unwrap();
+        let image = barcode.to_image().unwrap();
+        (image.data(), image.width() as u32, image.height() as u32)
+    }
+
     #[test]
     fn test_barcode_format_display() {
         assert_eq!(format!("{}", BarcodeFormat::DataBarExp), "DataBarExpanded");
         assert_eq!(format!("{}", BarcodeFormat::DataBarLtd), "DataBarLimited");
         assert_eq!(format!("{}", BarcodeFormat::DataBarExpStk), "DataBarExpandedStacked");
+    }
+
+    #[test]
+    fn test_decode_single_accepts_more_formats_than_the_zxing_format_count() {
+        let (pixels, width, height) = render(BarcodeFormat::QRCode, "QR_PAYLOAD");
+        let formats = [BarcodeFormat::QRCode; 33];
+
+        let decoded = decode_single(GrayImage::new(&pixels[..], width, height), &formats).unwrap();
+
+        assert_eq!(decoded.unwrap().text(), "QR_PAYLOAD");
     }
 }
