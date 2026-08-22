@@ -37,7 +37,10 @@ classifiers = [
 
 [tool.maturin]
 manifest-path = "pyrxing/Cargo.toml"
-include = [{ path = "pyrxing.pyi", format = "sdist" }]
+include = [
+    { path = "pyrxing.pyi", format = "sdist" },
+    { path = "LICENSE", format = "sdist" },
+]
 features = ["pyo3/extension-module"]
 name = "pyrxing"
 
