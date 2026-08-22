@@ -1,4 +1,6 @@
 import ctypes
+import pathlib
+import re
 from typing import Self
 
 import pytest
@@ -123,6 +125,42 @@ def test_read_barcode_filters_by_a_subformat_name() -> None:
 
     assert matched == []
     assert pyrxing.read_barcode(image, formats=["QRCodeModel2"]).text == QR_CODE_VALUE
+
+
+def stub_barcode_format_names() -> list[str]:
+    """Returns the names the BarcodeFormat Literal of pyrxing.pyi declares."""
+    stub = pathlib.Path(__file__).with_name("pyrxing.pyi").read_text()
+    literal = stub.split("BarcodeFormat = Literal[", 1)[1].split("]", 1)[0]
+    return re.findall(r'"([A-Za-z0-9]+)"', literal)
+
+
+def test_stub_declares_only_names_the_extension_accepts() -> None:
+    image = Image.open(QR_CODE)
+    names = stub_barcode_format_names()
+    assert len(names) == 35
+
+    for name in names:
+        pyrxing.read_barcode(image, formats=[name])
+        pyrxing.read_barcodes(image, formats=[name])
+
+
+@pytest.mark.parametrize(
+    "formats", [["Bogus"], ["QRCode", "Bogus"], ["Bogus", "AlsoBogus"], ["qrcode"]]
+)
+def test_read_barcode_rejects_an_unknown_format_name(formats: list[str]) -> None:
+    image = Image.open(QR_CODE)
+
+    with pytest.raises(ValueError, match="Unsupported barcode format"):
+        pyrxing.read_barcode(image, formats=formats)
+
+
+@pytest.mark.parametrize("formats", [None, []])
+def test_read_barcode_searches_every_format_without_a_filter(
+    formats: list[str] | None,
+) -> None:
+    image = Image.open(QR_CODE)
+
+    assert pyrxing.read_barcode(image, formats=formats).text == QR_CODE_VALUE
 
 
 def test_read_barcode_accepts_more_formats_than_the_zxing_format_count() -> None:

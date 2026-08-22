@@ -132,10 +132,8 @@ fn get_image_source<'a>(obj: &Bound<'a, PyAny>) -> Result<ImageSource<'a>> {
             }
         }
         if !conform_to_image_protocol {
-            return Err(error::Error::Python(
-                pyo3::exceptions::PyValueError::new_err(
-                    "value must be either str or conform to ImageProtocol",
-                ),
+            return Err(error::Error::value_error(
+                "value must be either str or conform to ImageProtocol",
             ));
         }
 
@@ -196,8 +194,11 @@ fn decode(obj: &Bound<'_, PyAny>, formats: Option<Vec<String>>, multi: bool) -> 
     let formats = formats
         .unwrap_or_else(|| vec![])
         .into_iter()
-        .filter_map(|name| name.parse::<reader_core::BarcodeFormat>().ok())
-        .collect::<Vec<_>>();
+        .map(|name| {
+            name.parse::<reader_core::BarcodeFormat>()
+                .map_err(|e| error::Error::value_error(e.to_string()))
+        })
+        .collect::<std::result::Result<Vec<_>, _>>()?;
 
     if multi {
         reader_core::decode_multiple(gray_image, formats.as_slice())
