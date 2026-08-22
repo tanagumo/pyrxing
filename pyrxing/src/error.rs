@@ -1,62 +1,67 @@
 use pyo3::exceptions::PyException;
 use pyo3::prelude::*;
+use pyo3::PyClassInitializer;
 
-#[pyclass(extends = PyException, name = "BarcodeDecodeError", module = "pyrxing")]
+/// Base class of every exception the module defines.
+#[pyclass(extends = PyException, name = "Error", module = "pyrxing", subclass)]
 #[derive(Debug)]
-pub(crate) struct PyBarcodeDecodeError {
-    #[pyo3(get)]
+pub(crate) struct PyBaseError {
     message: String,
 }
+
+#[pymethods]
+impl PyBaseError {
+    #[new]
+    fn new(message: String) -> Self {
+        Self { message }
+    }
+
+    fn __str__(&self) -> &str {
+        &self.message
+    }
+}
+
+#[pyclass(extends = PyBaseError, name = "BarcodeDecodeError", module = "pyrxing")]
+#[derive(Debug)]
+pub(crate) struct PyBarcodeDecodeError;
 
 #[pymethods]
 impl PyBarcodeDecodeError {
     #[new]
-    fn new(message: String) -> Self {
-        PyBarcodeDecodeError { message }
+    fn new(message: String) -> PyClassInitializer<Self> {
+        PyClassInitializer::from(PyBaseError { message }).add_subclass(Self)
     }
 }
 
-impl std::fmt::Display for PyBarcodeDecodeError {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "BarcodeDecodeError({})", self.message)
-    }
-}
-
-impl std::error::Error for PyBarcodeDecodeError {}
-
-impl From<PyBarcodeDecodeError> for PyErr {
-    fn from(e: PyBarcodeDecodeError) -> Self {
-        PyErr::new::<PyBarcodeDecodeError, _>(e.message)
-    }
-}
-
-#[pyclass(extends = PyException, name = "ImageError", module = "pyrxing")]
+#[pyclass(extends = PyBaseError, name = "ImageError", module = "pyrxing")]
 #[derive(Debug)]
-pub(crate) struct PyImageError {
-    #[pyo3(get)]
-    message: String,
-}
+pub(crate) struct PyImageError;
 
 #[pymethods]
 impl PyImageError {
     #[new]
-    fn new(message: String) -> Self {
-        PyImageError { message }
+    fn new(message: String) -> PyClassInitializer<Self> {
+        PyClassInitializer::from(PyBaseError { message }).add_subclass(Self)
     }
 }
 
-impl std::fmt::Display for PyImageError {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "ImageError({})", self.message)
-    }
+/// Raises `initializer` as a Python exception.
+fn raise<T>(initializer: PyClassInitializer<T>) -> PyErr
+where
+    T: pyo3::PyClass,
+{
+    Python::attach(|py| match Bound::new(py, initializer) {
+        Ok(value) => PyErr::from_value(value.into_any()),
+        Err(e) => e,
+    })
 }
 
-impl std::error::Error for PyImageError {}
+fn barcode_decode_error(message: String) -> PyErr {
+    raise(PyClassInitializer::from(PyBaseError { message }).add_subclass(PyBarcodeDecodeError))
+}
 
-impl From<PyImageError> for PyErr {
-    fn from(e: PyImageError) -> Self {
-        PyErr::new::<PyImageError, _>(e.message)
-    }
+fn image_error(message: String) -> PyErr {
+    raise(PyClassInitializer::from(PyBaseError { message }).add_subclass(PyImageError))
 }
 
 #[derive(Debug)]
@@ -120,15 +125,15 @@ impl From<Error> for PyErr {
 
         match value {
             Image(e) => match e {
-                ImageError::Decode(e) => PyErr::new::<PyImageError, _>(e.to_string()),
-                ImageError::UnsupportedMode(e) => PyErr::new::<PyImageError, _>(e.to_string()),
+                ImageError::Decode(e) => image_error(e.to_string()),
+                ImageError::UnsupportedMode(e) => image_error(e),
             },
             Io(e) => match e.kind() {
                 std::io::ErrorKind::NotFound => pyo3::exceptions::PyFileNotFoundError::new_err(e),
                 _ => e.into(),
             },
             Python(e) => e,
-            Decode(e) => PyErr::new::<PyBarcodeDecodeError, _>(e.to_string()),
+            Decode(e) => barcode_decode_error(e),
         }
     }
 }

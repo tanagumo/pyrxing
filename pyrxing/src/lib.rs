@@ -251,6 +251,7 @@ fn read_barcodes(
 
 #[pymodule]
 fn pyrxing(m: &Bound<'_, PyModule>) -> PyResult<()> {
+    m.add_class::<error::PyBaseError>()?;
     m.add_class::<error::PyBarcodeDecodeError>()?;
     m.add_class::<error::PyImageError>()?;
     m.add_class::<DecodeResult>()?;

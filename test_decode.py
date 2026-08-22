@@ -284,3 +284,20 @@ def test_read_barcode_rejects_a_pixel_count_beyond_u32() -> None:
     # and let an empty buffer through.
     with pytest.raises(ValueError, match="expected 4294967296, got 0"):
         pyrxing.read_barcode(SizedImage(0x80000000, 2, b""))
+
+
+def test_module_exceptions_derive_from_the_module_base() -> None:
+    assert issubclass(pyrxing.ImageError, pyrxing.Error)
+    assert issubclass(pyrxing.BarcodeDecodeError, pyrxing.Error)
+    assert issubclass(pyrxing.Error, Exception)
+
+
+def test_image_error_carries_its_message() -> None:
+    image = Image.open(QR_CODE).convert("CMYK")
+
+    with pytest.raises(pyrxing.Error) as caught:
+        pyrxing.read_barcode(image)
+
+    assert isinstance(caught.value, pyrxing.ImageError)
+    assert "unsupported mode(CMYK)" in str(caught.value)
+    assert not hasattr(caught.value, "message")
