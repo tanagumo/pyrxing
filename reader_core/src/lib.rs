@@ -1,4 +1,4 @@
-use std::{borrow::Cow, cell::OnceCell, fmt::Display};
+use std::{borrow::Cow, cell::OnceCell, fmt::Display, str::FromStr};
 
 use thiserror::Error;
 use zxingcpp::{Barcode, BarcodeFormat as ZxBarcodeFormat, ImageFormat, ImageView, PointI};
@@ -127,6 +127,54 @@ impl Display for BarcodeFormat {
             UPCE => "UPCE",
         };
         write!(f, "{}", v)
+    }
+}
+
+impl FromStr for BarcodeFormat {
+    type Err = Error;
+
+    /// Parses the name [`Display`] produces for a variant.
+    fn from_str(s: &str) -> Result<Self> {
+        use BarcodeFormat::*;
+        let v = match s {
+            "Aztec" => Aztec,
+            "AztecCode" => AztecCode,
+            "AztecRune" => AztecRune,
+            "Codabar" => Codabar,
+            "Code39" => Code39,
+            "Code93" => Code93,
+            "Code128" => Code128,
+            "CompactPDF417" => CompactPDF417,
+            "DataBar" => DataBar,
+            "DataBarExpanded" => DataBarExp,
+            "DataBarExpandedStacked" => DataBarExpStk,
+            "DataBarLimited" => DataBarLtd,
+            "DataBarOmni" => DataBarOmni,
+            "DataBarStacked" => DataBarStk,
+            "DataBarStackedOmni" => DataBarStkOmni,
+            "DataMatrix" => DataMatrix,
+            "DXFilmEdge" => DXFilmEdge,
+            "EAN2" => EAN2,
+            "EAN5" => EAN5,
+            "EAN8" => EAN8,
+            "EAN13" => EAN13,
+            "EANUPC" => EANUPC,
+            "ISBN" => ISBN,
+            "ITF" => ITF,
+            "MaxiCode" => MaxiCode,
+            "MicroPDF417" => MicroPDF417,
+            "MicroQRCode" => MicroQRCode,
+            "PDF417" => PDF417,
+            "PZN" => PZN,
+            "QRCode" => QRCode,
+            "QRCodeModel1" => QRCodeModel1,
+            "QRCodeModel2" => QRCodeModel2,
+            "RMQRCode" => RMQRCode,
+            "UPCA" => UPCA,
+            "UPCE" => UPCE,
+            other => return Err(Error::UnsupportedFormat(other.to_owned())),
+        };
+        Ok(v)
     }
 }
 
@@ -299,23 +347,36 @@ pub struct GrayImage<'a> {
 }
 
 impl<'a> GrayImage<'a> {
-    pub fn new(raw: impl Into<Cow<'a, [u8]>>, width: u32, height: u32) -> Self {
+    /// Builds a grayscale image from one luminance byte per pixel.
+    ///
+    /// Returns [`Error::InvalidInput`] unless `raw` holds exactly `width` * `height` bytes.
+    pub fn new(raw: impl Into<Cow<'a, [u8]>>, width: u32, height: u32) -> Result<Self> {
         let raw = raw.into();
-        if raw.len() != (width * height) as usize {
-            panic!("the length of the `raw` must be equal to `width` * `height`");
+        let pixel_count = (width as usize).checked_mul(height as usize).ok_or_else(|| {
+            Error::InvalidInput(format!("{}x{} is too large to address", width, height))
+        })?;
+        if raw.len() != pixel_count {
+            return Err(Error::InvalidInput(format!(
+                "the length of the `raw` must be equal to `width` * `height`: expected {}, got {}",
+                pixel_count,
+                raw.len()
+            )));
         }
-        Self {
+        Ok(Self {
             raw,
             width,
             height,
             format: ImageFormat::Lum,
-        }
+        })
     }
 }
 
-impl<'a> From<&'a GrayImage<'a>> for ImageView<'a> {
-    fn from(value: &'a GrayImage<'a>) -> Self {
-        ImageView::from_slice(&value.raw, value.width, value.height, value.format).unwrap()
+impl<'a> TryFrom<&'a GrayImage<'a>> for ImageView<'a> {
+    type Error = Error;
+
+    fn try_from(value: &'a GrayImage<'a>) -> Result<Self> {
+        ImageView::from_slice(&value.raw, value.width, value.height, value.format)
+            .map_err(|e| Error::InvalidInput(e.to_string()))
     }
 }
 
@@ -327,18 +388,18 @@ fn decode<'a>(
     let mut read_barcodes = if formats.is_empty() {
         zxingcpp::read().formats(&[ZxBarcodeFormat::All])
     } else {
-        let mut zx_formats_buf = [ZxBarcodeFormat::None; 32];
-        for (i, f) in formats.iter().enumerate() {
-            zx_formats_buf[i] = (*f).into();
-        }
-        zxingcpp::read().formats(&zx_formats_buf[..formats.len()])
+        let zx_formats = formats
+            .iter()
+            .map(|f| ZxBarcodeFormat::from(*f))
+            .collect::<Vec<_>>();
+        zxingcpp::read().formats(zx_formats.as_slice())
     };
 
     if !multi {
         read_barcodes.set_max_number_of_symbols(1);
     }
     read_barcodes
-        .from(Into::<ImageView>::into(&image))
+        .from(ImageView::try_from(&image)?)
         .map_err(|e| Error::DecodeError(e.to_string()))
 }
 
@@ -373,10 +434,317 @@ pub fn decode_single<'a>(
 mod tests {
     use super::*;
 
+    /// Pixels of a rendered barcode along with its size.
+    type Rendered = (Vec<u8>, u32, u32);
+
+    /// Renders `text` as a barcode and returns the pixels along with the size.
+    fn render(format: BarcodeFormat, text: &str) -> Rendered {
+        let barcode = zxingcpp::create(format.into()).from_str(text).unwrap();
+        let image = barcode.to_image_with(&zxingcpp::write().scale(3)).unwrap();
+        (image.data(), image.width() as u32, image.height() as u32)
+    }
+
+    /// Places `tiles` side by side on a white canvas, framed and separated by `margin` pixels.
+    fn tile_horizontally(tiles: &[Rendered], margin: u32) -> Rendered {
+        let height = tiles.iter().map(|(_, _, h)| h).max().unwrap() + margin * 2;
+        let width = tiles.iter().map(|(_, w, _)| w + margin).sum::<u32>() + margin;
+        let mut canvas = vec![0xFFu8; (width * height) as usize];
+        let mut left = margin;
+        for (pixels, tile_width, tile_height) in tiles {
+            for row in 0..*tile_height {
+                let from = (row * tile_width) as usize;
+                let onto = ((row + margin) * width + left) as usize;
+                canvas[onto..onto + *tile_width as usize]
+                    .copy_from_slice(&pixels[from..from + *tile_width as usize]);
+            }
+            left += tile_width + margin;
+        }
+        (canvas, width, height)
+    }
+
+    const ALL_FORMATS: [BarcodeFormat; 35] = {
+        use BarcodeFormat::*;
+        [
+            Aztec,
+            AztecCode,
+            AztecRune,
+            Codabar,
+            Code128,
+            Code39,
+            Code93,
+            CompactPDF417,
+            DXFilmEdge,
+            DataBar,
+            DataBarExp,
+            DataBarExpStk,
+            DataBarLtd,
+            DataBarOmni,
+            DataBarStk,
+            DataBarStkOmni,
+            DataMatrix,
+            EAN13,
+            EAN2,
+            EAN5,
+            EAN8,
+            EANUPC,
+            ISBN,
+            ITF,
+            MaxiCode,
+            MicroPDF417,
+            MicroQRCode,
+            PDF417,
+            PZN,
+            QRCode,
+            QRCodeModel1,
+            QRCodeModel2,
+            RMQRCode,
+            UPCA,
+            UPCE,
+        ]
+    };
+
     #[test]
     fn test_barcode_format_display() {
         assert_eq!(format!("{}", BarcodeFormat::DataBarExp), "DataBarExpanded");
         assert_eq!(format!("{}", BarcodeFormat::DataBarLtd), "DataBarLimited");
         assert_eq!(format!("{}", BarcodeFormat::DataBarExpStk), "DataBarExpandedStacked");
+    }
+
+    #[test]
+    fn test_barcode_format_names_are_distinct() {
+        let mut names = ALL_FORMATS.map(|f| f.to_string()).to_vec();
+        names.sort();
+        names.dedup();
+
+        assert_eq!(names.len(), ALL_FORMATS.len());
+    }
+
+    #[test]
+    fn test_barcode_format_parses_back_from_its_display_name() {
+        for format in ALL_FORMATS {
+            let name = format.to_string();
+
+            assert_eq!(name.parse::<BarcodeFormat>().unwrap(), format, "{}", name);
+        }
+    }
+
+    #[test]
+    fn test_barcode_format_rejects_an_unknown_name() {
+        let error = "Bogus".parse::<BarcodeFormat>().unwrap_err();
+
+        assert!(
+            matches!(&error, Error::UnsupportedFormat(name) if name == "Bogus"),
+            "unexpected error: {error}"
+        );
+    }
+
+    #[test]
+    fn test_gray_image_new_accepts_a_matching_length() {
+        let image = GrayImage::new(vec![0u8; 12], 4, 3).unwrap();
+
+        assert_eq!((image.width, image.height), (4, 3));
+    }
+
+    #[test]
+    fn test_gray_image_new_rejects_a_mismatched_length() {
+        let error = GrayImage::new(vec![0u8; 11], 4, 3).unwrap_err();
+
+        assert!(
+            matches!(&error, Error::InvalidInput(m) if m.contains("11") && m.contains("12")),
+            "unexpected error: {error}"
+        );
+    }
+
+    #[test]
+    fn test_gray_image_new_counts_pixels_without_wrapping() {
+        // 0x80000000 * 2 is 2^32, so a u32 multiplication would report zero pixels
+        // and let an empty buffer through.
+        let error = GrayImage::new(Vec::new(), 0x8000_0000, 2).unwrap_err();
+
+        assert!(
+            matches!(&error, Error::InvalidInput(m) if m.contains("4294967296")),
+            "unexpected error: {error}"
+        );
+    }
+
+    #[test]
+    fn test_barcode_format_converts_back_from_the_zxing_format() {
+        for format in ALL_FORMATS {
+            let zx = ZxBarcodeFormat::from(format);
+
+            assert_eq!(BarcodeFormat::try_from(zx).unwrap(), format, "{}", format);
+        }
+    }
+
+    #[test]
+    fn test_barcode_format_rejects_a_zxing_format_without_a_counterpart() {
+        for zx in [
+            ZxBarcodeFormat::None,
+            ZxBarcodeFormat::All,
+            ZxBarcodeFormat::Telepen,
+            ZxBarcodeFormat::OtherBarcode,
+        ] {
+            let error = BarcodeFormat::try_from(zx).unwrap_err();
+
+            assert!(
+                matches!(error, Error::UnsupportedFormat(_)),
+                "unexpected error for {}: {}",
+                zx,
+                error
+            );
+        }
+    }
+
+    /// Payloads rendered and read back, paired with the text and format zxing reports.
+    const ROUND_TRIPS: [(BarcodeFormat, &str, &str, BarcodeFormat); 17] = {
+        use BarcodeFormat::*;
+        [
+            (Aztec, "AZTEC_DATA", "AZTEC_DATA", Aztec),
+            (Codabar, "A12345D", "A12345D", Codabar),
+            (Code39, "CODE39", "CODE39", Code39),
+            (Code93, "CODE93", "CODE93", Code93),
+            (Code128, "Code 128 Data", "Code 128 Data", Code128),
+            (ITF, "1234567890", "1234567890", ITF),
+            (DataMatrix, "DataMatrix_31802", "DataMatrix_31802", DataMatrix),
+            (PDF417, "PDF417_12417", "PDF417_12417", PDF417),
+            (QRCode, "QR_PAYLOAD", "QR_PAYLOAD", QRCode),
+            (MicroQRCode, "0ZFXY9", "0ZFXY9", MicroQRCode),
+            (RMQRCode, "V4GQ68D2", "V4GQ68D2", RMQRCode),
+            (EAN8, "07727931", "07727931", EAN8),
+            (EAN13, "2708639496369", "2708639496369", EAN13),
+            // zxing normalises a UPC-A symbol into its EAN-13 form.
+            (UPCA, "041935974561", "0041935974561", EAN13),
+            (MaxiCode, "MaxiCode_46753", "MaxiCode_46753", MaxiCode),
+            (
+                DataBar,
+                "0101234567890128",
+                "(01)01234567890128",
+                DataBarOmni,
+            ),
+            (
+                DataBarLtd,
+                "0101234567890128",
+                "(01)01234567890128",
+                DataBarLtd,
+            ),
+        ]
+    };
+
+    #[test]
+    fn test_decode_single_reads_back_a_rendered_barcode() {
+        for (format, payload, text, reported) in ROUND_TRIPS {
+            let (pixels, width, height) = render(format, payload);
+            let image = GrayImage::new(&pixels[..], width, height).unwrap();
+
+            let decoded = decode_single(image, &[]).unwrap().expect(payload);
+
+            assert_eq!(decoded.text(), text, "{}", format);
+            assert_eq!(decoded.format().unwrap(), reported, "{}", format);
+        }
+    }
+
+    #[test]
+    fn test_decode_single_returns_nothing_for_a_blank_image() {
+        let image = GrayImage::new(vec![0xFFu8; 64 * 64], 64, 64).unwrap();
+
+        assert!(decode_single(image, &[]).unwrap().is_none());
+    }
+
+    #[test]
+    fn test_decode_single_keeps_a_symbol_of_a_requested_format() {
+        let (pixels, width, height) = render(BarcodeFormat::QRCode, "QR_PAYLOAD");
+        let image = GrayImage::new(&pixels[..], width, height).unwrap();
+
+        let decoded = decode_single(image, &[BarcodeFormat::QRCode, BarcodeFormat::EAN13]).unwrap();
+
+        assert_eq!(decoded.unwrap().text(), "QR_PAYLOAD");
+    }
+
+    #[test]
+    fn test_decode_single_drops_a_symbol_of_another_format() {
+        let (pixels, width, height) = render(BarcodeFormat::QRCode, "QR_PAYLOAD");
+        let image = GrayImage::new(&pixels[..], width, height).unwrap();
+
+        let decoded = decode_single(image, &[BarcodeFormat::EAN13]).unwrap();
+
+        assert!(decoded.is_none());
+    }
+
+    #[test]
+    fn test_decode_single_accepts_more_formats_than_the_zxing_format_count() {
+        let (pixels, width, height) = render(BarcodeFormat::QRCode, "QR_PAYLOAD");
+        let formats = [BarcodeFormat::QRCode; 33];
+
+        let image = GrayImage::new(&pixels[..], width, height).unwrap();
+        let decoded = decode_single(image, &formats).unwrap();
+
+        assert_eq!(decoded.unwrap().text(), "QR_PAYLOAD");
+    }
+
+    /// Renders two QR codes side by side on one canvas.
+    fn two_qr_codes() -> Rendered {
+        tile_horizontally(
+            &[
+                render(BarcodeFormat::QRCode, "LEFT_PAYLOAD"),
+                render(BarcodeFormat::QRCode, "RIGHT_PAYLOAD"),
+            ],
+            12,
+        )
+    }
+
+    #[test]
+    fn test_decode_stops_at_one_symbol_outside_multi_mode() {
+        let (pixels, width, height) = two_qr_codes();
+        let multi = decode(
+            GrayImage::new(&pixels[..], width, height).unwrap(),
+            &[],
+            true,
+        );
+        assert_eq!(multi.unwrap().len(), 2, "the canvas must carry two symbols");
+
+        let single = decode(
+            GrayImage::new(&pixels[..], width, height).unwrap(),
+            &[],
+            false,
+        );
+
+        assert_eq!(single.unwrap().len(), 1);
+    }
+
+    #[test]
+    fn test_decode_multiple_reads_every_symbol() {
+        let (pixels, width, height) = two_qr_codes();
+        let image = GrayImage::new(&pixels[..], width, height).unwrap();
+
+        let mut texts = decode_multiple(image, &[])
+            .unwrap()
+            .iter()
+            .map(|r| r.text().to_owned())
+            .collect::<Vec<_>>();
+        texts.sort();
+
+        assert_eq!(texts, ["LEFT_PAYLOAD", "RIGHT_PAYLOAD"]);
+    }
+
+    #[test]
+    fn test_decode_result_points_trace_the_position_clockwise() {
+        let (pixels, width, height) = render(BarcodeFormat::QRCode, "QR_PAYLOAD");
+        let image = GrayImage::new(&pixels[..], width, height).unwrap();
+        let decoded = decode_single(image, &[]).unwrap().unwrap();
+
+        let position = decoded.position();
+        let (top_left, bottom_right) = (position.top_left(), position.bottom_right());
+
+        assert!(top_left.x() < bottom_right.x());
+        assert!(top_left.y() < bottom_right.y());
+        assert_eq!(
+            decoded.points(),
+            [
+                top_left,
+                Point::new(bottom_right.x(), top_left.y()),
+                bottom_right,
+                Point::new(top_left.x(), bottom_right.y()),
+            ]
+        );
     }
 }

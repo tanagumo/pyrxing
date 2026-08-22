@@ -73,6 +73,12 @@ pub(crate) enum Error {
     Decode(String),
 }
 
+impl Error {
+    pub(crate) fn value_error(message: impl Into<String>) -> Self {
+        Self::Python(pyo3::exceptions::PyValueError::new_err(message.into()))
+    }
+}
+
 impl From<ImageError> for Error {
     fn from(value: ImageError) -> Self {
         Self::Image(value)
@@ -94,6 +100,17 @@ impl From<std::io::Error> for Error {
 impl From<image::ImageError> for Error {
     fn from(value: image::ImageError) -> Self {
         Self::Image(ImageError::Decode(value))
+    }
+}
+
+impl From<reader_core::Error> for Error {
+    fn from(value: reader_core::Error) -> Self {
+        match value {
+            reader_core::Error::InvalidInput(message) => {
+                Self::Python(pyo3::exceptions::PyValueError::new_err(message))
+            }
+            other => Self::Decode(other.to_string()),
+        }
     }
 }
 

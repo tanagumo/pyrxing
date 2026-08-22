@@ -68,8 +68,7 @@ enum ImageSource<'a> {
         height: u32,
     },
     ImageProtocolDataView {
-        _holder: Bound<'a, PyAny>,
-        data: Bound<'a, PyAny>,
+        data: Bound<'a, PyBytes>,
         width: u32,
         height: u32,
     },
@@ -92,25 +91,18 @@ impl<'a, 'b: 'a> TryInto<GrayImage<'a>> for &'a ImageSource<'b> {
                 let image_buffer = reader.decode()?.to_luma8();
                 let width = image_buffer.width();
                 let height = image_buffer.height();
-                Ok(GrayImage::new(image_buffer.into_raw(), width, height))
+                Ok(GrayImage::new(image_buffer.into_raw(), width, height)?)
             }
             ImageSource::ImageProtocolData {
                 data,
                 width,
                 height,
-            } => Ok(GrayImage::new(data, *width, *height)),
+            } => Ok(GrayImage::new(data, *width, *height)?),
             ImageSource::ImageProtocolDataView {
-                // Holds the __array_interface__ object to maintain its reference count.
-                // Python's __array_interface__ property may creates temporary view objects
-                // that get GC'd immediately if not referenced, invalidating data.
-                _holder,
                 data,
                 width,
                 height,
-            } => {
-                let py_bytes = data.cast::<PyBytes>().unwrap().as_bytes();
-                Ok(GrayImage::new(py_bytes, *width, *height))
-            }
+            } => Ok(GrayImage::new(data.as_bytes(), *width, *height)?),
         }
     }
 }
@@ -140,10 +132,8 @@ fn get_image_source<'a>(obj: &Bound<'a, PyAny>) -> Result<ImageSource<'a>> {
             }
         }
         if !conform_to_image_protocol {
-            return Err(error::Error::Python(
-                pyo3::exceptions::PyValueError::new_err(
-                    "value must be either str or conform to ImageProtocol",
-                ),
+            return Err(error::Error::value_error(
+                "value must be either str or conform to ImageProtocol",
             ));
         }
 
@@ -175,71 +165,26 @@ fn get_image_source<'a>(obj: &Bound<'a, PyAny>) -> Result<ImageSource<'a>> {
         let width = target_obj.getattr("width")?.extract::<u32>()?;
         let height = target_obj.getattr("height")?.extract::<u32>()?;
 
-        if target_obj.hasattr("__array_interface__")? {
-            let ai = target_obj.getattr("__array_interface__")?;
-            let type_str = ai.get_item("typestr")?.extract::<PyBackedStr>()?;
-            if type_str == "|u1" {
-                let data = ai.get_item("data")?;
-                return Ok(ImageSource::ImageProtocolDataView {
-                    _holder: ai,
-                    data,
-                    width,
-                    height,
-                });
-            }
+        // Borrowing the `bytes` from `tobytes` avoids copying the pixels into a `Vec`.
+        // Any other buffer still goes through `extract`, at the cost of that copy.
+        match target_obj.call_method0("tobytes")?.cast_into::<PyBytes>() {
+            Ok(data) => Ok(ImageSource::ImageProtocolDataView {
+                data,
+                width,
+                height,
+            }),
+            Err(err) => Ok(ImageSource::ImageProtocolData {
+                data: err.into_inner().extract::<Vec<u8>>()?,
+                width,
+                height,
+            }),
         }
-
-        let data = target_obj.call_method0("tobytes")?.extract::<Vec<u8>>()?;
-        Ok(ImageSource::ImageProtocolData {
-            data,
-            width,
-            height,
-        })
     }
 }
 
 enum Decoded {
     Single(Option<DecodeResult>),
     Multi(Vec<DecodeResult>),
-}
-
-struct _BarcodeFormat(String);
-
-impl TryFrom<_BarcodeFormat> for reader_core::BarcodeFormat {
-    type Error = String;
-    fn try_from(value: _BarcodeFormat) -> std::result::Result<Self, Self::Error> {
-        use reader_core::BarcodeFormat as BF;
-        let v = match value.0.as_str() {
-            "Aztec" => BF::Aztec,
-            "Codabar" => BF::Codabar,
-            "Code39" => BF::Code39,
-            "Code93" => BF::Code93,
-            "Code128" => BF::Code128,
-            "DataBar" => BF::DataBar,
-            "DataBarExpanded" => BF::DataBarExp,
-            "DataBarExpandedStacked" => BF::DataBarExpStk,
-            "DataBarLimited" => BF::DataBarLtd,
-            "DataBarOmni" => BF::DataBarOmni,
-            "DataBarStacked" => BF::DataBarStk,
-            "DataBarStackedOmni" => BF::DataBarStkOmni,
-            "DataMatrix" => BF::DataMatrix,
-            "EAN8" => BF::EAN8,
-            "EAN13" => BF::EAN13,
-            "ITF" => BF::ITF,
-            "MaxiCode" => BF::MaxiCode,
-            "PDF417" => BF::PDF417,
-            "QRCode" => BF::QRCode,
-            "UPCA" => BF::UPCA,
-            "UPCE" => BF::UPCE,
-            "MicroQRCode" => BF::MicroQRCode,
-            "RMQRCode" => BF::RMQRCode,
-            "DXFilmEdge" => BF::DXFilmEdge,
-            other => {
-                return Err(format!("`{}` is not supported", other));
-            }
-        };
-        Ok(v)
-    }
 }
 
 fn decode(obj: &Bound<'_, PyAny>, formats: Option<Vec<String>>, multi: bool) -> Result<Decoded> {
@@ -249,12 +194,15 @@ fn decode(obj: &Bound<'_, PyAny>, formats: Option<Vec<String>>, multi: bool) -> 
     let formats = formats
         .unwrap_or_else(|| vec![])
         .into_iter()
-        .filter_map(|bf| TryInto::<reader_core::BarcodeFormat>::try_into(_BarcodeFormat(bf)).ok())
-        .collect::<Vec<_>>();
+        .map(|name| {
+            name.parse::<reader_core::BarcodeFormat>()
+                .map_err(|e| error::Error::value_error(e.to_string()))
+        })
+        .collect::<std::result::Result<Vec<_>, _>>()?;
 
     if multi {
         reader_core::decode_multiple(gray_image, formats.as_slice())
-            .map_err(|e| error::Error::Decode(e.to_string()))
+            .map_err(error::Error::from)
             .and_then(|result| {
                 result
                     .into_iter()
@@ -264,7 +212,7 @@ fn decode(obj: &Bound<'_, PyAny>, formats: Option<Vec<String>>, multi: bool) -> 
             })
     } else {
         reader_core::decode_single(gray_image, formats.as_slice())
-            .map_err(|e| error::Error::Decode(e.to_string()))
+            .map_err(error::Error::from)
             .and_then(|opt| {
                 opt.map(|r| r.try_into())
                     .transpose()

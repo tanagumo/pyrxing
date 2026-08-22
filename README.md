@@ -116,12 +116,12 @@ pyrxing delivers competitive performance across a comprehensive range of barcode
 - **Libraries**: pyrxing 0.4.4 (zxing-cpp 0.5.0), zxing-cpp 3.0.0, Pillow 12.1.1
 - **Method**: Median of 100 runs with 20-run warm-up
 
-**Test Images**: Located in [`pyrxing/assets/`](pyrxing/assets/) directory:
+**Test Images**: Located in [`assets/`](assets/) directory:
 - 1D Barcodes: `test_codabar.png`, `test_code39.png`, `test_code93.png`, `test_code128.png`, `test_ean8.png`, `test_ean13.png`, `test_itf.png`, `test_upc_a.png`, `test_upc_e.png`, `test_data_bar.png`, `test_data_bar_expanded.png`, `test_data_bar_limited.png`
 - 2D Barcodes: `test_qr_code.png`, `test_micro_qr.png`, `test_rmqr.png`, `test_aztec.png`, `test_data_matrix.png`, `test_pdf417.png`, `test_maxi_code.png`
 - Specialty: `test_dx_film_edge.png`
 
-**Reproduce benchmarks**: See [`pyrxing/benchmark.py`](pyrxing/benchmark.py) for the complete benchmark script.
+**Reproduce benchmarks**: See [`benchmark.py`](benchmark.py) for the complete benchmark script.
 
 ---
 
@@ -203,6 +203,9 @@ BarcodeFormat = Literal[
 
 
 class ImageProtocol(Protocol):
+    @property
+    def mode(self) -> str: ...
+
     @property
     def width(self) -> int: ...
 
