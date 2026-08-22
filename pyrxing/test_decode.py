@@ -1,3 +1,5 @@
+from typing import Self
+
 import pytest
 from PIL import Image
 
@@ -66,3 +68,48 @@ def test_read():
         assert len(res) == 1
         assert res[0].text == v['value']
         assert res[0].format == v['format']
+
+
+QR_CODE: str = "assets/test_qr_code.png"
+QR_CODE_VALUE: str = "https://demo.net/demo/7809"
+
+
+class SizedImage:
+    """An ImageProtocol implementation reporting a size of its own choosing."""
+
+    mode: str = "L"
+
+    def __init__(self, width: int, height: int, data: bytes) -> None:
+        self.width = width
+        self.height = height
+        self._data = data
+
+    def tobytes(self) -> bytes:
+        return self._data
+
+    def convert(self, mode: str) -> Self:
+        return self
+
+    def load(self) -> None:
+        pass
+
+
+def test_read_barcode_accepts_more_formats_than_the_zxing_format_count() -> None:
+    image = Image.open(QR_CODE)
+
+    assert pyrxing.read_barcode(image, formats=["QRCode"] * 33).text == QR_CODE_VALUE
+
+
+def test_read_barcode_rejects_a_size_disagreeing_with_the_pixel_data() -> None:
+    image = Image.open(QR_CODE).convert("L")
+    truncated = SizedImage(image.width, image.height, image.tobytes()[:-1])
+
+    with pytest.raises(ValueError, match="expected 122500, got 122499"):
+        pyrxing.read_barcode(truncated)
+
+
+def test_read_barcode_rejects_a_pixel_count_beyond_u32() -> None:
+    # 0x80000000 * 2 is 2**32, so a wrapping multiplication would report zero pixels
+    # and let an empty buffer through.
+    with pytest.raises(ValueError, match="expected 4294967296, got 0"):
+        pyrxing.read_barcode(SizedImage(0x80000000, 2, b""))

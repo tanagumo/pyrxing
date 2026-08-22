@@ -92,13 +92,13 @@ impl<'a, 'b: 'a> TryInto<GrayImage<'a>> for &'a ImageSource<'b> {
                 let image_buffer = reader.decode()?.to_luma8();
                 let width = image_buffer.width();
                 let height = image_buffer.height();
-                Ok(GrayImage::new(image_buffer.into_raw(), width, height))
+                Ok(GrayImage::new(image_buffer.into_raw(), width, height)?)
             }
             ImageSource::ImageProtocolData {
                 data,
                 width,
                 height,
-            } => Ok(GrayImage::new(data, *width, *height)),
+            } => Ok(GrayImage::new(data, *width, *height)?),
             ImageSource::ImageProtocolDataView {
                 // Holds the __array_interface__ object to maintain its reference count.
                 // Python's __array_interface__ property may creates temporary view objects
@@ -109,7 +109,7 @@ impl<'a, 'b: 'a> TryInto<GrayImage<'a>> for &'a ImageSource<'b> {
                 height,
             } => {
                 let py_bytes = data.cast::<PyBytes>().unwrap().as_bytes();
-                Ok(GrayImage::new(py_bytes, *width, *height))
+                Ok(GrayImage::new(py_bytes, *width, *height)?)
             }
         }
     }
@@ -254,7 +254,7 @@ fn decode(obj: &Bound<'_, PyAny>, formats: Option<Vec<String>>, multi: bool) -> 
 
     if multi {
         reader_core::decode_multiple(gray_image, formats.as_slice())
-            .map_err(|e| error::Error::Decode(e.to_string()))
+            .map_err(error::Error::from)
             .and_then(|result| {
                 result
                     .into_iter()
@@ -264,7 +264,7 @@ fn decode(obj: &Bound<'_, PyAny>, formats: Option<Vec<String>>, multi: bool) -> 
             })
     } else {
         reader_core::decode_single(gray_image, formats.as_slice())
-            .map_err(|e| error::Error::Decode(e.to_string()))
+            .map_err(error::Error::from)
             .and_then(|opt| {
                 opt.map(|r| r.try_into())
                     .transpose()

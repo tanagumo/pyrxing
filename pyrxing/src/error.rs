@@ -97,6 +97,17 @@ impl From<image::ImageError> for Error {
     }
 }
 
+impl From<reader_core::Error> for Error {
+    fn from(value: reader_core::Error) -> Self {
+        match value {
+            reader_core::Error::InvalidInput(message) => {
+                Self::Python(pyo3::exceptions::PyValueError::new_err(message))
+            }
+            other => Self::Decode(other.to_string()),
+        }
+    }
+}
+
 impl From<Error> for PyErr {
     fn from(value: Error) -> Self {
         use Error::*;

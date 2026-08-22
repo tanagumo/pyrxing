@@ -299,23 +299,36 @@ pub struct GrayImage<'a> {
 }
 
 impl<'a> GrayImage<'a> {
-    pub fn new(raw: impl Into<Cow<'a, [u8]>>, width: u32, height: u32) -> Self {
+    /// Builds a grayscale image from one luminance byte per pixel.
+    ///
+    /// Returns [`Error::InvalidInput`] unless `raw` holds exactly `width` * `height` bytes.
+    pub fn new(raw: impl Into<Cow<'a, [u8]>>, width: u32, height: u32) -> Result<Self> {
         let raw = raw.into();
-        if raw.len() != (width * height) as usize {
-            panic!("the length of the `raw` must be equal to `width` * `height`");
+        let pixel_count = (width as usize).checked_mul(height as usize).ok_or_else(|| {
+            Error::InvalidInput(format!("{}x{} is too large to address", width, height))
+        })?;
+        if raw.len() != pixel_count {
+            return Err(Error::InvalidInput(format!(
+                "the length of the `raw` must be equal to `width` * `height`: expected {}, got {}",
+                pixel_count,
+                raw.len()
+            )));
         }
-        Self {
+        Ok(Self {
             raw,
             width,
             height,
             format: ImageFormat::Lum,
-        }
+        })
     }
 }
 
-impl<'a> From<&'a GrayImage<'a>> for ImageView<'a> {
-    fn from(value: &'a GrayImage<'a>) -> Self {
-        ImageView::from_slice(&value.raw, value.width, value.height, value.format).unwrap()
+impl<'a> TryFrom<&'a GrayImage<'a>> for ImageView<'a> {
+    type Error = Error;
+
+    fn try_from(value: &'a GrayImage<'a>) -> Result<Self> {
+        ImageView::from_slice(&value.raw, value.width, value.height, value.format)
+            .map_err(|e| Error::InvalidInput(e.to_string()))
     }
 }
 
@@ -338,7 +351,7 @@ fn decode<'a>(
         read_barcodes.set_max_number_of_symbols(1);
     }
     read_barcodes
-        .from(Into::<ImageView>::into(&image))
+        .from(ImageView::try_from(&image)?)
         .map_err(|e| Error::DecodeError(e.to_string()))
 }
 
@@ -388,11 +401,41 @@ mod tests {
     }
 
     #[test]
+    fn test_gray_image_new_accepts_a_matching_length() {
+        let image = GrayImage::new(vec![0u8; 12], 4, 3).unwrap();
+
+        assert_eq!((image.width, image.height), (4, 3));
+    }
+
+    #[test]
+    fn test_gray_image_new_rejects_a_mismatched_length() {
+        let error = GrayImage::new(vec![0u8; 11], 4, 3).unwrap_err();
+
+        assert!(
+            matches!(&error, Error::InvalidInput(m) if m.contains("11") && m.contains("12")),
+            "unexpected error: {error}"
+        );
+    }
+
+    #[test]
+    fn test_gray_image_new_counts_pixels_without_wrapping() {
+        // 0x80000000 * 2 is 2^32, so a u32 multiplication would report zero pixels
+        // and let an empty buffer through.
+        let error = GrayImage::new(Vec::new(), 0x8000_0000, 2).unwrap_err();
+
+        assert!(
+            matches!(&error, Error::InvalidInput(m) if m.contains("4294967296")),
+            "unexpected error: {error}"
+        );
+    }
+
+    #[test]
     fn test_decode_single_accepts_more_formats_than_the_zxing_format_count() {
         let (pixels, width, height) = render(BarcodeFormat::QRCode, "QR_PAYLOAD");
         let formats = [BarcodeFormat::QRCode; 33];
 
-        let decoded = decode_single(GrayImage::new(&pixels[..], width, height), &formats).unwrap();
+        let image = GrayImage::new(&pixels[..], width, height).unwrap();
+        let decoded = decode_single(image, &formats).unwrap();
 
         assert_eq!(decoded.unwrap().text(), "QR_PAYLOAD");
     }
