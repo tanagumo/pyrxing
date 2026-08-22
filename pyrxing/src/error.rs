@@ -82,6 +82,10 @@ impl Error {
     pub(crate) fn value_error(message: impl Into<String>) -> Self {
         Self::Python(pyo3::exceptions::PyValueError::new_err(message.into()))
     }
+
+    pub(crate) fn type_error(message: impl Into<String>) -> Self {
+        Self::Python(pyo3::exceptions::PyTypeError::new_err(message.into()))
+    }
 }
 
 impl From<ImageError> for Error {

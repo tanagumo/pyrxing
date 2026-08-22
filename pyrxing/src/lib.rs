@@ -131,8 +131,8 @@ fn get_image_source<'a>(obj: &Bound<'a, PyAny>) -> Result<ImageSource<'a>> {
             }
         }
         if !conform_to_image_protocol {
-            return Err(error::Error::value_error(
-                "value must be either str or conform to ImageProtocol",
+            return Err(error::Error::type_error(
+                "image must be a str, os.PathLike or ImageProtocol value",
             ));
         }
 

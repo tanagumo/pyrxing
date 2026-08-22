@@ -314,3 +314,29 @@ def test_read_barcode_accepts_an_fspath_implementation() -> None:
             return QR_CODE
 
     assert pyrxing.read_barcode(PathHolder()).text == QR_CODE_VALUE
+
+
+@pytest.mark.parametrize(
+    "image", [123, None, b"assets/test_qr_code.png", object(), ["assets/test_qr_code.png"]]
+)
+def test_read_barcode_rejects_an_argument_of_another_type(image: object) -> None:
+    with pytest.raises(TypeError, match="str, os.PathLike or ImageProtocol"):
+        pyrxing.read_barcode(image)
+
+
+def test_read_barcode_rejects_an_incomplete_image_protocol() -> None:
+    class WithoutMode:
+        width = 4
+        height = 3
+
+        def tobytes(self) -> bytes:
+            return bytes(12)
+
+        def convert(self, mode: str) -> Self:
+            return self
+
+        def load(self) -> None:
+            pass
+
+    with pytest.raises(TypeError):
+        pyrxing.read_barcode(WithoutMode())
