@@ -76,21 +76,11 @@ def test_read() -> None:
 
 
 @pytest.mark.parametrize(("path", "expected"), ASSETS.items())
-@pytest.mark.parametrize(
-    "read_mode",
-    [
-        pytest.param(cv2.IMREAD_GRAYSCALE, id="grayscale"),
-        pytest.param(cv2.IMREAD_COLOR, id="bgr"),
-        pytest.param(cv2.IMREAD_UNCHANGED, id="unchanged"),
-    ],
-)
-def test_read_opencv_numpy_arrays(
-    path: str, expected: dict[str, str], read_mode: int
-) -> None:
-    image = cv2.imread(path, read_mode)
+def test_read_opencv_numpy_arrays(path: str, expected: dict[str, str]) -> None:
+    image = cv2.imread(path, cv2.IMREAD_GRAYSCALE)
     assert image is not None
     assert image.dtype == np.uint8
-    assert image.ndim == 2 or image.shape[2] in (3, 4)
+    assert image.ndim == 2
 
     result = pyrxing.read_barcode(image)
     assert result is not None
@@ -107,14 +97,14 @@ def test_read_opencv_numpy_arrays(
     ("image", "message"),
     [
         (np.zeros((2, 2), dtype=np.float32), "array dtype must be uint8"),
-        (np.zeros((2, 2, 2), dtype=np.uint8), "array channel count"),
+        (np.zeros((2, 2, 3), dtype=np.uint8), "array must be single-channel grayscale"),
         (np.zeros((2,), dtype=np.uint8), "array shape must be"),
         (np.zeros((1, 1, 1, 1), dtype=np.uint8), "array shape must be"),
         (np.zeros((0, 2), dtype=np.uint8), "greater than zero"),
     ],
 )
 def test_rejects_unsupported_numpy_arrays(image: np.ndarray, message: str) -> None:
-    with pytest.raises(ValueError, match=message):
+    with pytest.raises(pyrxing.ImageError, match=message):
         pyrxing.read_barcode(image)
 
 
@@ -130,7 +120,7 @@ class InvalidArrayData:
 
 
 def test_rejects_mismatched_array_data() -> None:
-    with pytest.raises(ValueError, match="expected 4, got 3"):
+    with pytest.raises(pyrxing.ImageError, match="expected 4, got 3"):
         pyrxing.read_barcode(InvalidArrayData())
 
 

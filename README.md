@@ -150,7 +150,7 @@ from PIL import Image
 barcode = read_barcode(Image.open("example.png"))
 ```
 
-NumPy-compatible `uint8` arrays are accepted in grayscale (`H, W`) and one-, three-, or four-channel (`H, W, C`) shapes. Three-channel arrays may use RGB or OpenCV's BGR order; pyrxing uses a channel-order-neutral grayscale conversion. Four-channel arrays are handled the same way with alpha ignored. Sliced and other non-contiguous arrays are supported.
+NumPy-compatible `uint8` arrays are accepted in grayscale (`H, W`) and single-channel (`H, W, 1`) shapes. Sliced and other non-contiguous arrays are supported.
 
 This example generates a QR code with optional OpenCV, then passes the resulting NumPy array directly to the built pyrxing library:
 
@@ -167,6 +167,7 @@ qr_code = cv2.copyMakeBorder(
 qr_code = cv2.resize(
   qr_code, None, fx=8, fy=8, interpolation=cv2.INTER_NEAREST
 )
+qr_code = cv2.cvtColor(qr_code, cv2.COLOR_BGR2GRAY)
 
 barcode = read_barcode(qr_code, formats=["QRCode"])
 assert barcode is not None
