@@ -346,10 +346,14 @@ pub struct GrayImage<'a> {
     format: ImageFormat,
 }
 
+/// Largest side length the zxing reader accepts.
+const MAX_SIDE: u32 = 65535;
+
 impl<'a> GrayImage<'a> {
     /// Builds a grayscale image from one luminance byte per pixel.
     ///
-    /// Returns [`Error::InvalidInput`] unless `raw` holds exactly `width` * `height` bytes.
+    /// Returns [`Error::InvalidInput`] unless `raw` holds exactly `width` * `height` bytes
+    /// and neither side exceeds [`MAX_SIDE`].
     pub fn new(raw: impl Into<Cow<'a, [u8]>>, width: u32, height: u32) -> Result<Self> {
         let raw = raw.into();
         let pixel_count = (width as usize).checked_mul(height as usize).ok_or_else(|| {
@@ -360,6 +364,12 @@ impl<'a> GrayImage<'a> {
                 "the length of the `raw` must be equal to `width` * `height`: expected {}, got {}",
                 pixel_count,
                 raw.len()
+            )));
+        }
+        if width > MAX_SIDE || height > MAX_SIDE {
+            return Err(Error::InvalidInput(format!(
+                "the maximum image width and height is {}, got {}x{}",
+                MAX_SIDE, width, height
             )));
         }
         Ok(Self {
@@ -553,6 +563,21 @@ mod tests {
             matches!(&error, Error::InvalidInput(m) if m.contains("11") && m.contains("12")),
             "unexpected error: {error}"
         );
+    }
+
+    #[test]
+    fn test_gray_image_new_rejects_a_side_beyond_the_reader_limit() {
+        let error = GrayImage::new(vec![0u8; 0x10000], 0x10000, 1).unwrap_err();
+
+        assert!(
+            matches!(&error, Error::InvalidInput(m) if m.contains("65535")),
+            "unexpected error: {error}"
+        );
+    }
+
+    #[test]
+    fn test_gray_image_new_accepts_the_largest_side() {
+        assert!(GrayImage::new(vec![0u8; 65535], 65535, 1).is_ok());
     }
 
     #[test]

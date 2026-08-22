@@ -89,6 +89,7 @@ fn image_error(message: String) -> PyErr {
 pub(crate) enum ImageError {
     Decode(image::ImageError),
     UnsupportedMode(String),
+    Invalid(String),
 }
 
 #[derive(Debug)]
@@ -132,9 +133,7 @@ impl From<image::ImageError> for Error {
 impl From<reader_core::Error> for Error {
     fn from(value: reader_core::Error) -> Self {
         match value {
-            reader_core::Error::InvalidInput(message) => {
-                Self::Python(pyo3::exceptions::PyValueError::new_err(message))
-            }
+            reader_core::Error::InvalidInput(message) => Self::Image(ImageError::Invalid(message)),
             other => Self::Decode(other.to_string()),
         }
     }
@@ -148,6 +147,7 @@ impl From<Error> for PyErr {
             Image(e) => match e {
                 ImageError::Decode(e) => image_error(e.to_string()),
                 ImageError::UnsupportedMode(e) => image_error(e),
+                ImageError::Invalid(e) => image_error(e),
             },
             Io(e) => match e.kind() {
                 std::io::ErrorKind::NotFound => pyo3::exceptions::PyFileNotFoundError::new_err(e),

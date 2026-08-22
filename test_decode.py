@@ -239,7 +239,7 @@ def test_read_barcode_rejects_a_size_disagreeing_with_the_pixel_data() -> None:
     image = Image.open(QR_CODE).convert("L")
     truncated = SizedImage(image.width, image.height, image.tobytes()[:-1])
 
-    with pytest.raises(ValueError, match="expected 122500, got 122499"):
+    with pytest.raises(pyrxing.ImageError, match="expected 122500, got 122499"):
         pyrxing.read_barcode(truncated)
 
 
@@ -298,7 +298,7 @@ def test_read_barcode_accepts_a_buffer_other_than_bytes() -> None:
 def test_read_barcode_rejects_a_pixel_count_beyond_u32() -> None:
     # 0x80000000 * 2 is 2**32, so a wrapping multiplication would report zero pixels
     # and let an empty buffer through.
-    with pytest.raises(ValueError, match="expected 4294967296, got 0"):
+    with pytest.raises(pyrxing.ImageError, match="expected 4294967296, got 0"):
         pyrxing.read_barcode(SizedImage(0x80000000, 2, b""))
 
 
@@ -356,3 +356,10 @@ def test_read_barcode_rejects_an_incomplete_image_protocol() -> None:
 
     with pytest.raises(TypeError):
         pyrxing.read_barcode(WithoutMode())
+
+
+def test_read_barcode_rejects_a_dimension_beyond_the_reader_limit() -> None:
+    image = SizedImage(0x10000, 1, bytes(0x10000))
+
+    with pytest.raises(pyrxing.ImageError, match="65535"):
+        pyrxing.read_barcode(image)
