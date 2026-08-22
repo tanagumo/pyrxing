@@ -7,6 +7,24 @@ permissions:
   contents: read
 
 jobs:
+  cargo-test:
+    runs-on: ubuntu-24.04
+
+    steps:
+      - uses: actions/checkout@v4
+      - name: install libpython
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y python3-dev
+      - name: Cache Rust dependencies
+        uses: Swatinem/rust-cache@v2
+        with:
+          key: cargo-test-${{ runner.os }}-x86_64
+      - name: cargo test
+        env:
+          CXXFLAGS: "-std=c++20"
+        run: cargo test --workspace
+
   pytest:
     runs-on: ubuntu-24.04
 
