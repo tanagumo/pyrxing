@@ -449,7 +449,7 @@ def test_stub_declares_the_exception_hierarchy() -> None:
 
 def test_readme_repeats_the_type_stub() -> None:
     def api_block(path: pathlib.Path) -> str:
-        text = path.read_text()
+        text = path.read_text(encoding="utf-8")
         return text.split("class ImageProtocol(Protocol):", 1)[1].split("def read_barcode", 1)[0]
 
     here = pathlib.Path(__file__).parent
