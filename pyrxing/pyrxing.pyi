@@ -42,6 +42,9 @@ BarcodeFormat = Literal[
 
 class ImageProtocol(Protocol):
     @property
+    def mode(self) -> str: ...
+
+    @property
     def width(self) -> int: ...
 
     @property

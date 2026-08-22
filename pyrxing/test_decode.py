@@ -127,6 +127,56 @@ def test_read_barcode_filters_by_a_subformat_name() -> None:
     assert pyrxing.read_barcode(image, formats=["QRCodeModel2"]).text == QR_CODE_VALUE
 
 
+def stub_image_protocol_members() -> set[str]:
+    """Returns the member names the ImageProtocol of pyrxing.pyi declares."""
+    stub = pathlib.Path(__file__).with_name("pyrxing.pyi").read_text()
+    body = stub.split("class ImageProtocol(Protocol):", 1)[1].split("\nclass ", 1)[0]
+    return set(re.findall(r"def ([a-z_]+)\(", body))
+
+
+class StubConformantImage:
+    """An ImageProtocol implementation with exactly the members pyrxing.pyi declares."""
+
+    def __init__(self, pil: Image.Image) -> None:
+        self._pil = pil.convert("L")
+
+    @property
+    def mode(self) -> str:
+        return self._pil.mode
+
+    @property
+    def width(self) -> int:
+        return self._pil.width
+
+    @property
+    def height(self) -> int:
+        return self._pil.height
+
+    def tobytes(self) -> bytes:
+        return self._pil.tobytes()
+
+    def convert(self, mode: str) -> Image.Image:
+        return self._pil.convert(mode)
+
+    def load(self) -> None:
+        self._pil.load()
+
+
+def test_stub_declares_the_members_the_extension_requires() -> None:
+    assert stub_image_protocol_members() == {
+        "mode",
+        "width",
+        "height",
+        "tobytes",
+        "convert",
+        "load",
+    }
+
+    image = StubConformantImage(Image.open(QR_CODE))
+
+    assert pyrxing.read_barcode(image).text == QR_CODE_VALUE
+
+
 def stub_barcode_format_names() -> list[str]:
     """Returns the names the BarcodeFormat Literal of pyrxing.pyi declares."""
     stub = pathlib.Path(__file__).with_name("pyrxing.pyi").read_text()
