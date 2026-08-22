@@ -195,13 +195,29 @@ def test_stub_declares_only_names_the_extension_accepts() -> None:
 
 
 @pytest.mark.parametrize(
-    "formats", [["Bogus"], ["QRCode", "Bogus"], ["Bogus", "AlsoBogus"], ["qrcode"]]
+    ("formats", "reported"),
+    [
+        (["Bogus"], "Bogus"),
+        (["QRCode", "Bogus"], "Bogus"),
+        (["Bogus", "AlsoBogus"], "Bogus"),
+        (["qrcode"], "qrcode"),
+    ],
 )
-def test_read_barcode_rejects_an_unknown_format_name(formats: list[str]) -> None:
+def test_read_barcode_rejects_an_unknown_format_name(
+    formats: list[str], reported: str
+) -> None:
     image = Image.open(QR_CODE)
 
-    with pytest.raises(ValueError, match="Unsupported barcode format"):
+    with pytest.raises(pyrxing.UnsupportedFormatError) as caught:
         pyrxing.read_barcode(image, formats=formats)
+
+    assert caught.value.format == reported
+    assert reported in str(caught.value)
+
+
+def test_unsupported_format_error_derives_from_the_module_base() -> None:
+    assert issubclass(pyrxing.UnsupportedFormatError, pyrxing.Error)
+    assert not issubclass(pyrxing.UnsupportedFormatError, pyrxing.ImageError)
 
 
 @pytest.mark.parametrize("formats", [None, []])

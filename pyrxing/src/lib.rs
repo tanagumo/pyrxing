@@ -195,7 +195,7 @@ fn decode(obj: &Bound<'_, PyAny>, formats: Option<Vec<String>>, multi: bool) -> 
         .into_iter()
         .map(|name| {
             name.parse::<reader_core::BarcodeFormat>()
-                .map_err(|e| error::Error::value_error(e.to_string()))
+                .map_err(|_| error::Error::Python(error::unsupported_format_error(name)))
         })
         .collect::<std::result::Result<Vec<_>, _>>()?;
 
@@ -253,6 +253,7 @@ fn pyrxing(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_class::<error::PyBaseError>()?;
     m.add_class::<error::PyBarcodeDecodeError>()?;
     m.add_class::<error::PyImageError>()?;
+    m.add_class::<error::PyUnsupportedFormatError>()?;
     m.add_class::<DecodeResult>()?;
     m.add_function(wrap_pyfunction!(read_barcode, m)?)?;
     m.add_function(wrap_pyfunction!(read_barcodes, m)?)?;

@@ -45,6 +45,22 @@ impl PyImageError {
     }
 }
 
+#[pyclass(extends = PyBaseError, name = "UnsupportedFormatError", module = "pyrxing")]
+#[derive(Debug)]
+pub(crate) struct PyUnsupportedFormatError {
+    /// The rejected barcode format name.
+    #[pyo3(get)]
+    format: String,
+}
+
+#[pymethods]
+impl PyUnsupportedFormatError {
+    #[new]
+    fn new(message: String, format: String) -> PyClassInitializer<Self> {
+        PyClassInitializer::from(PyBaseError { message }).add_subclass(Self { format })
+    }
+}
+
 /// Raises `initializer` as a Python exception.
 fn raise<T>(initializer: PyClassInitializer<T>) -> PyErr
 where
@@ -58,6 +74,11 @@ where
 
 fn barcode_decode_error(message: String) -> PyErr {
     raise(PyClassInitializer::from(PyBaseError { message }).add_subclass(PyBarcodeDecodeError))
+}
+
+pub(crate) fn unsupported_format_error(format: String) -> PyErr {
+    let message = format!("`{}` is not a supported barcode format", format);
+    raise(PyClassInitializer::from(PyBaseError { message }).add_subclass(PyUnsupportedFormatError { format }))
 }
 
 fn image_error(message: String) -> PyErr {
@@ -79,10 +100,6 @@ pub(crate) enum Error {
 }
 
 impl Error {
-    pub(crate) fn value_error(message: impl Into<String>) -> Self {
-        Self::Python(pyo3::exceptions::PyValueError::new_err(message.into()))
-    }
-
     pub(crate) fn type_error(message: impl Into<String>) -> Self {
         Self::Python(pyo3::exceptions::PyTypeError::new_err(message.into()))
     }
