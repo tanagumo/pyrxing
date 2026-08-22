@@ -301,3 +301,16 @@ def test_image_error_carries_its_message() -> None:
     assert isinstance(caught.value, pyrxing.ImageError)
     assert "unsupported mode(CMYK)" in str(caught.value)
     assert not hasattr(caught.value, "message")
+
+
+@pytest.mark.parametrize("factory", [str, pathlib.Path])
+def test_read_barcode_accepts_a_path_like_argument(factory) -> None:
+    assert pyrxing.read_barcode(factory(QR_CODE)).text == QR_CODE_VALUE
+
+
+def test_read_barcode_accepts_an_fspath_implementation() -> None:
+    class PathHolder:
+        def __fspath__(self) -> str:
+            return QR_CODE
+
+    assert pyrxing.read_barcode(PathHolder()).text == QR_CODE_VALUE
