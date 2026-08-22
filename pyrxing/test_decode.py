@@ -95,6 +95,36 @@ class SizedImage:
         pass
 
 
+# Subformat names of pyrxing.pyi none of which a QR code carries.
+NAMES_MISSING_FROM_A_QR_CODE: list[str] = [
+    "AztecCode",
+    "AztecRune",
+    "CompactPDF417",
+    "EAN2",
+    "EAN5",
+    "EANUPC",
+    "ISBN",
+    "MicroPDF417",
+    "PZN",
+    "QRCodeModel1",
+]
+
+
+def test_read_barcode_filters_by_a_subformat_name() -> None:
+    # A name the extension drops leaves `formats` empty, and an empty list means
+    # every format, so the QR code below would decode instead of being filtered out.
+    image = Image.open(QR_CODE)
+
+    matched = [
+        name
+        for name in NAMES_MISSING_FROM_A_QR_CODE
+        if pyrxing.read_barcode(image, formats=[name]) is not None
+    ]
+
+    assert matched == []
+    assert pyrxing.read_barcode(image, formats=["QRCodeModel2"]).text == QR_CODE_VALUE
+
+
 def test_read_barcode_accepts_more_formats_than_the_zxing_format_count() -> None:
     image = Image.open(QR_CODE)
 

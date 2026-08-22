@@ -189,45 +189,6 @@ enum Decoded {
     Multi(Vec<DecodeResult>),
 }
 
-struct _BarcodeFormat(String);
-
-impl TryFrom<_BarcodeFormat> for reader_core::BarcodeFormat {
-    type Error = String;
-    fn try_from(value: _BarcodeFormat) -> std::result::Result<Self, Self::Error> {
-        use reader_core::BarcodeFormat as BF;
-        let v = match value.0.as_str() {
-            "Aztec" => BF::Aztec,
-            "Codabar" => BF::Codabar,
-            "Code39" => BF::Code39,
-            "Code93" => BF::Code93,
-            "Code128" => BF::Code128,
-            "DataBar" => BF::DataBar,
-            "DataBarExpanded" => BF::DataBarExp,
-            "DataBarExpandedStacked" => BF::DataBarExpStk,
-            "DataBarLimited" => BF::DataBarLtd,
-            "DataBarOmni" => BF::DataBarOmni,
-            "DataBarStacked" => BF::DataBarStk,
-            "DataBarStackedOmni" => BF::DataBarStkOmni,
-            "DataMatrix" => BF::DataMatrix,
-            "EAN8" => BF::EAN8,
-            "EAN13" => BF::EAN13,
-            "ITF" => BF::ITF,
-            "MaxiCode" => BF::MaxiCode,
-            "PDF417" => BF::PDF417,
-            "QRCode" => BF::QRCode,
-            "UPCA" => BF::UPCA,
-            "UPCE" => BF::UPCE,
-            "MicroQRCode" => BF::MicroQRCode,
-            "RMQRCode" => BF::RMQRCode,
-            "DXFilmEdge" => BF::DXFilmEdge,
-            other => {
-                return Err(format!("`{}` is not supported", other));
-            }
-        };
-        Ok(v)
-    }
-}
-
 fn decode(obj: &Bound<'_, PyAny>, formats: Option<Vec<String>>, multi: bool) -> Result<Decoded> {
     let image_source = &get_image_source(obj)?;
     let gray_image = (image_source).try_into()?;
@@ -235,7 +196,7 @@ fn decode(obj: &Bound<'_, PyAny>, formats: Option<Vec<String>>, multi: bool) -> 
     let formats = formats
         .unwrap_or_else(|| vec![])
         .into_iter()
-        .filter_map(|bf| TryInto::<reader_core::BarcodeFormat>::try_into(_BarcodeFormat(bf)).ok())
+        .filter_map(|name| name.parse::<reader_core::BarcodeFormat>().ok())
         .collect::<Vec<_>>();
 
     if multi {

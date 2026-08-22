@@ -1,4 +1,4 @@
-use std::{borrow::Cow, cell::OnceCell, fmt::Display};
+use std::{borrow::Cow, cell::OnceCell, fmt::Display, str::FromStr};
 
 use thiserror::Error;
 use zxingcpp::{Barcode, BarcodeFormat as ZxBarcodeFormat, ImageFormat, ImageView, PointI};
@@ -127,6 +127,54 @@ impl Display for BarcodeFormat {
             UPCE => "UPCE",
         };
         write!(f, "{}", v)
+    }
+}
+
+impl FromStr for BarcodeFormat {
+    type Err = Error;
+
+    /// Parses the name [`Display`] produces for a variant.
+    fn from_str(s: &str) -> Result<Self> {
+        use BarcodeFormat::*;
+        let v = match s {
+            "Aztec" => Aztec,
+            "AztecCode" => AztecCode,
+            "AztecRune" => AztecRune,
+            "Codabar" => Codabar,
+            "Code39" => Code39,
+            "Code93" => Code93,
+            "Code128" => Code128,
+            "CompactPDF417" => CompactPDF417,
+            "DataBar" => DataBar,
+            "DataBarExpanded" => DataBarExp,
+            "DataBarExpandedStacked" => DataBarExpStk,
+            "DataBarLimited" => DataBarLtd,
+            "DataBarOmni" => DataBarOmni,
+            "DataBarStacked" => DataBarStk,
+            "DataBarStackedOmni" => DataBarStkOmni,
+            "DataMatrix" => DataMatrix,
+            "DXFilmEdge" => DXFilmEdge,
+            "EAN2" => EAN2,
+            "EAN5" => EAN5,
+            "EAN8" => EAN8,
+            "EAN13" => EAN13,
+            "EANUPC" => EANUPC,
+            "ISBN" => ISBN,
+            "ITF" => ITF,
+            "MaxiCode" => MaxiCode,
+            "MicroPDF417" => MicroPDF417,
+            "MicroQRCode" => MicroQRCode,
+            "PDF417" => PDF417,
+            "PZN" => PZN,
+            "QRCode" => QRCode,
+            "QRCodeModel1" => QRCodeModel1,
+            "QRCodeModel2" => QRCodeModel2,
+            "RMQRCode" => RMQRCode,
+            "UPCA" => UPCA,
+            "UPCE" => UPCE,
+            other => return Err(Error::UnsupportedFormat(other.to_owned())),
+        };
+        Ok(v)
     }
 }
 
@@ -393,11 +441,80 @@ mod tests {
         (image.data(), image.width() as u32, image.height() as u32)
     }
 
+    const ALL_FORMATS: [BarcodeFormat; 35] = {
+        use BarcodeFormat::*;
+        [
+            Aztec,
+            AztecCode,
+            AztecRune,
+            Codabar,
+            Code128,
+            Code39,
+            Code93,
+            CompactPDF417,
+            DXFilmEdge,
+            DataBar,
+            DataBarExp,
+            DataBarExpStk,
+            DataBarLtd,
+            DataBarOmni,
+            DataBarStk,
+            DataBarStkOmni,
+            DataMatrix,
+            EAN13,
+            EAN2,
+            EAN5,
+            EAN8,
+            EANUPC,
+            ISBN,
+            ITF,
+            MaxiCode,
+            MicroPDF417,
+            MicroQRCode,
+            PDF417,
+            PZN,
+            QRCode,
+            QRCodeModel1,
+            QRCodeModel2,
+            RMQRCode,
+            UPCA,
+            UPCE,
+        ]
+    };
+
     #[test]
     fn test_barcode_format_display() {
         assert_eq!(format!("{}", BarcodeFormat::DataBarExp), "DataBarExpanded");
         assert_eq!(format!("{}", BarcodeFormat::DataBarLtd), "DataBarLimited");
         assert_eq!(format!("{}", BarcodeFormat::DataBarExpStk), "DataBarExpandedStacked");
+    }
+
+    #[test]
+    fn test_barcode_format_names_are_distinct() {
+        let mut names = ALL_FORMATS.map(|f| f.to_string()).to_vec();
+        names.sort();
+        names.dedup();
+
+        assert_eq!(names.len(), ALL_FORMATS.len());
+    }
+
+    #[test]
+    fn test_barcode_format_parses_back_from_its_display_name() {
+        for format in ALL_FORMATS {
+            let name = format.to_string();
+
+            assert_eq!(name.parse::<BarcodeFormat>().unwrap(), format, "{}", name);
+        }
+    }
+
+    #[test]
+    fn test_barcode_format_rejects_an_unknown_name() {
+        let error = "Bogus".parse::<BarcodeFormat>().unwrap_err();
+
+        assert!(
+            matches!(&error, Error::UnsupportedFormat(name) if name == "Bogus"),
+            "unexpected error: {error}"
+        );
     }
 
     #[test]
