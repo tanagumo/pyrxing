@@ -9,7 +9,7 @@ from PIL import Image
 import pyrxing
 
 
-ASSETS = {
+ASSETS: dict[str, dict[str, str]] = {
     "assets/test_aztec.png": {"format": "MicroQRCode", "value": "Code Code Data"},
     "assets/test_codabar.png": {"format": "Codabar", "value": "A-12656-D"},
     "assets/test_code128.png": {
@@ -59,7 +59,7 @@ ASSETS = {
     "assets/test_upc_e.png": {"format": "UPCE", "value": "0182749000074"},
 }
 
-def test_read():
+def test_read() -> None:
     for path, v in ASSETS.items():
         i = Image.open(path)
         res = pyrxing.read_barcode(i)
