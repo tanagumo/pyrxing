@@ -9,7 +9,7 @@ use pyo3::prelude::*;
 use pyo3::pybacked::PyBackedStr;
 use pyo3::types::{PyBytes, PyString};
 
-use reader_core::{self, GrayImage};
+use reader_core::{self, Dimensions, GrayImage};
 
 type Result<T> = std::result::Result<T, error::Error>;
 
@@ -97,23 +97,29 @@ impl<'a, 'b: 'a> TryInto<GrayImage<'a>> for &'a ImageSource<'b> {
                 let image_buffer = reader.decode()?.to_luma8();
                 let width = image_buffer.width();
                 let height = image_buffer.height();
-                Ok(GrayImage::new(image_buffer.into_raw(), width, height)?)
+                Ok(GrayImage::new(
+                    image_buffer.into_raw(),
+                    Dimensions::new(width, height)?,
+                )?)
             }
             ImageSource::ArrayData {
                 data,
                 width,
                 height,
-            } => Ok(GrayImage::new(data, *width, *height)?),
+            } => Ok(GrayImage::new(data, Dimensions::new(*width, *height)?)?),
             ImageSource::ImageProtocolData {
                 data,
                 width,
                 height,
-            } => Ok(GrayImage::new(data, *width, *height)?),
+            } => Ok(GrayImage::new(data, Dimensions::new(*width, *height)?)?),
             ImageSource::ImageProtocolDataView {
                 data,
                 width,
                 height,
-            } => Ok(GrayImage::new(data.as_bytes(), *width, *height)?),
+            } => Ok(GrayImage::new(
+                data.as_bytes(),
+                Dimensions::new(*width, *height)?,
+            )?),
         }
     }
 }
