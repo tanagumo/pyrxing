@@ -97,7 +97,7 @@ pub(crate) enum Error {
     Image(ImageError),
     Io(std::io::Error),
     Python(PyErr),
-    Decode(String),
+    BarcodeDecode(String),
 }
 
 impl Error {
@@ -134,7 +134,7 @@ impl From<reader_core::Error> for Error {
     fn from(value: reader_core::Error) -> Self {
         match value {
             reader_core::Error::InvalidInput(message) => Self::Image(ImageError::Invalid(message)),
-            other => Self::Decode(other.to_string()),
+            other => Self::BarcodeDecode(other.to_string()),
         }
     }
 }
@@ -154,7 +154,7 @@ impl From<Error> for PyErr {
                 _ => e.into(),
             },
             Python(e) => e,
-            Decode(e) => barcode_decode_error(e),
+            BarcodeDecode(e) => barcode_decode_error(e),
         }
     }
 }

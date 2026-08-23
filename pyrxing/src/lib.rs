@@ -54,7 +54,7 @@ impl TryFrom<reader_core::DecodeResult> for DecodeResult {
                 "{}",
                 value
                     .format()
-                    .map_err(|e| error::Error::Decode(e.to_string()))?
+                    .map_err(|e| error::Error::BarcodeDecode(e.to_string()))?
             ),
         })
     }
