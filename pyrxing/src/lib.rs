@@ -206,8 +206,9 @@ fn get_image_source<'a>(obj: &Bound<'a, PyAny>) -> Result<ImageSource<'a>> {
             if obj.hasattr("__array_interface__")? {
                 return get_array_source(obj);
             }
-            return Err(error::Error::type_error(
-                "image must be a str, os.PathLike or ImageProtocol value or a uint8 array",
+            return Err(error::Error::Type(
+                "image must be a str, os.PathLike or ImageProtocol value or a uint8 array"
+                    .to_string(),
             ));
         }
 
@@ -261,7 +262,7 @@ fn decode(obj: &Bound<'_, PyAny>, formats: Option<Vec<String>>, multi: bool) -> 
         .into_iter()
         .map(|name| {
             name.parse::<reader_core::BarcodeFormat>()
-                .map_err(|_| error::Error::Python(error::unsupported_format_error(name)))
+                .map_err(|_| error::Error::UnsupportedFormat(name))
         })
         .collect::<std::result::Result<Vec<_>, _>>()?;
 

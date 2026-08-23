@@ -76,7 +76,7 @@ fn barcode_decode_error(message: String) -> PyErr {
     raise(PyClassInitializer::from(PyBaseError { message }).add_subclass(PyBarcodeDecodeError))
 }
 
-pub(crate) fn unsupported_format_error(format: String) -> PyErr {
+fn unsupported_format_error(format: String) -> PyErr {
     let message = format!("`{}` is not a supported barcode format", format);
     raise(PyClassInitializer::from(PyBaseError { message }).add_subclass(PyUnsupportedFormatError { format }))
 }
@@ -96,14 +96,11 @@ pub(crate) enum ImageError {
 pub(crate) enum Error {
     Image(ImageError),
     Io(std::io::Error),
-    Python(PyErr),
+    Type(String),
+    UnsupportedFormat(String),
     BarcodeDecode(String),
-}
-
-impl Error {
-    pub(crate) fn type_error(message: impl Into<String>) -> Self {
-        Self::Python(pyo3::exceptions::PyTypeError::new_err(message.into()))
-    }
+    /// An exception raised by Python itself, carried through unchanged.
+    Python(PyErr),
 }
 
 impl From<ImageError> for Error {
@@ -153,8 +150,10 @@ impl From<Error> for PyErr {
                 std::io::ErrorKind::NotFound => pyo3::exceptions::PyFileNotFoundError::new_err(e),
                 _ => e.into(),
             },
-            Python(e) => e,
+            Type(message) => pyo3::exceptions::PyTypeError::new_err(message),
+            UnsupportedFormat(format) => unsupported_format_error(format),
             BarcodeDecode(e) => barcode_decode_error(e),
+            Python(e) => e,
         }
     }
 }
