@@ -63,6 +63,11 @@ impl TryFrom<reader_core::DecodeResult> for DecodeResult {
 #[derive(Debug)]
 enum ImageSource<'a> {
     Path(PathBuf),
+    ArrayData {
+        data: Vec<u8>,
+        width: u32,
+        height: u32,
+    },
     ImageProtocolData {
         data: Vec<u8>,
         width: u32,
@@ -94,6 +99,11 @@ impl<'a, 'b: 'a> TryInto<GrayImage<'a>> for &'a ImageSource<'b> {
                 let height = image_buffer.height();
                 Ok(GrayImage::new(image_buffer.into_raw(), width, height)?)
             }
+            ImageSource::ArrayData {
+                data,
+                width,
+                height,
+            } => Ok(GrayImage::new(data, *width, *height)?),
             ImageSource::ImageProtocolData {
                 data,
                 width,
@@ -106,6 +116,71 @@ impl<'a, 'b: 'a> TryInto<GrayImage<'a>> for &'a ImageSource<'b> {
             } => Ok(GrayImage::new(data.as_bytes(), *width, *height)?),
         }
     }
+}
+
+
+fn get_array_source<'a>(obj: &Bound<'a, PyAny>) -> Result<ImageSource<'a>> {
+    let array_interface = obj.getattr("__array_interface__")?;
+    let type_str = array_interface
+        .get_item("typestr")?
+        .extract::<PyBackedStr>()?;
+    let is_uint8 = type_str.len() == 3
+        && matches!(type_str.as_bytes()[0], b'|' | b'<' | b'>' | b'=')
+        && &type_str[1..] == "u1";
+    if !is_uint8 {
+        return Err(error::ImageError::Invalid(format!(
+            "array dtype must be uint8, got {type_str}"
+        ))
+        .into());
+    }
+
+    let shape = array_interface.get_item("shape")?.extract::<Vec<usize>>()?;
+    let (height, width) = match shape.as_slice() {
+        [height, width] => (*height, *width),
+        [height, width, 1] => (*height, *width),
+        [_, _, channels] => {
+            return Err(error::ImageError::Invalid(format!(
+                "array must be single-channel grayscale, got {} channels",
+                channels
+            ))
+            .into());
+        }
+        _ => {
+            return Err(error::ImageError::Invalid(format!(
+                "array shape must be HxW or HxWx1, got {shape:?}"
+            ))
+            .into());
+        }
+    };
+
+    if height == 0 || width == 0 {
+        return Err(error::ImageError::Invalid(
+            "array width and height must be greater than zero".to_string(),
+        )
+        .into());
+    }
+    let height = u32::try_from(height)
+        .map_err(|_| error::ImageError::Invalid("array height is too large".to_string()))?;
+    let width = u32::try_from(width)
+        .map_err(|_| error::ImageError::Invalid("array width is too large".to_string()))?;
+    let pixel_count = width
+        .checked_mul(height)
+        .ok_or_else(|| error::ImageError::Invalid("array dimensions are too large".to_string()))?
+        as usize;
+    let data = obj.call_method0("tobytes")?.extract::<Vec<u8>>()?;
+    if data.len() != pixel_count {
+        return Err(error::ImageError::Invalid(format!(
+            "array byte length mismatch: expected {pixel_count}, got {}",
+            data.len()
+        ))
+        .into());
+    }
+
+    Ok(ImageSource::ArrayData {
+        data,
+        width,
+        height,
+    })
 }
 
 fn get_image_source<'a>(obj: &Bound<'a, PyAny>) -> Result<ImageSource<'a>> {
@@ -131,8 +206,11 @@ fn get_image_source<'a>(obj: &Bound<'a, PyAny>) -> Result<ImageSource<'a>> {
             }
         }
         if !conform_to_image_protocol {
+            if obj.hasattr("__array_interface__")? {
+                return get_array_source(obj);
+            }
             return Err(error::Error::type_error(
-                "image must be a str, os.PathLike or ImageProtocol value",
+                "image must be a str, os.PathLike or ImageProtocol value or a uint8 array",
             ));
         }
 
@@ -259,3 +337,6 @@ fn pyrxing(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(read_barcodes, m)?)?;
     Ok(())
 }
+
+#[cfg(test)]
+mod tests {}
