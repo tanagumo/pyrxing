@@ -60,23 +60,28 @@ impl TryFrom<reader_core::DecodeResult> for DecodeResult {
     }
 }
 
+/// Pixels owned by Rust, or borrowed from a Python `bytes`.
+#[derive(Debug)]
+enum PixelBytes<'a> {
+    Owned(Vec<u8>),
+    Borrowed(Bound<'a, PyBytes>),
+}
+
+impl AsRef<[u8]> for PixelBytes<'_> {
+    fn as_ref(&self) -> &[u8] {
+        match self {
+            PixelBytes::Owned(data) => data,
+            PixelBytes::Borrowed(data) => data.as_bytes(),
+        }
+    }
+}
+
 #[derive(Debug)]
 enum ImageSource<'a> {
     Path(PathBuf),
-    ArrayData {
-        data: Vec<u8>,
-        width: u32,
-        height: u32,
-    },
-    ImageProtocolData {
-        data: Vec<u8>,
-        width: u32,
-        height: u32,
-    },
-    ImageProtocolDataView {
-        data: Bound<'a, PyBytes>,
-        width: u32,
-        height: u32,
+    Pixels {
+        data: PixelBytes<'a>,
+        dimensions: Dimensions,
     },
 }
 
@@ -105,28 +110,23 @@ impl<'a, 'b: 'a> TryInto<GrayImage<'a>> for &'a ImageSource<'b> {
                 let image_buffer = DynamicImage::from_decoder(decoder)?.into_luma8();
                 Ok(GrayImage::new(image_buffer.into_raw(), dimensions)?)
             }
-            ImageSource::ArrayData {
-                data,
-                width,
-                height,
-            } => Ok(GrayImage::new(data, Dimensions::new(*width, *height)?)?),
-            ImageSource::ImageProtocolData {
-                data,
-                width,
-                height,
-            } => Ok(GrayImage::new(data, Dimensions::new(*width, *height)?)?),
-            ImageSource::ImageProtocolDataView {
-                data,
-                width,
-                height,
-            } => Ok(GrayImage::new(
-                data.as_bytes(),
-                Dimensions::new(*width, *height)?,
-            )?),
+            ImageSource::Pixels { data, dimensions } => {
+                Ok(GrayImage::new(data.as_ref(), *dimensions)?)
+            }
         }
     }
 }
 
+/// Reads the pixels out of `tobytes`.
+///
+/// Borrowing the `bytes` avoids copying the pixels into a `Vec`. Any other buffer
+/// still goes through `extract`, at the cost of that copy.
+fn get_pixel_bytes<'a>(obj: &Bound<'a, PyAny>) -> Result<PixelBytes<'a>> {
+    match obj.call_method0("tobytes")?.cast_into::<PyBytes>() {
+        Ok(data) => Ok(PixelBytes::Borrowed(data)),
+        Err(err) => Ok(PixelBytes::Owned(err.into_inner().extract::<Vec<u8>>()?)),
+    }
+}
 
 fn get_array_source<'a>(obj: &Bound<'a, PyAny>) -> Result<ImageSource<'a>> {
     let array_interface = obj.getattr("__array_interface__")?;
@@ -172,23 +172,11 @@ fn get_array_source<'a>(obj: &Bound<'a, PyAny>) -> Result<ImageSource<'a>> {
         .map_err(|_| error::ImageError::Invalid("array height is too large".to_string()))?;
     let width = u32::try_from(width)
         .map_err(|_| error::ImageError::Invalid("array width is too large".to_string()))?;
-    let pixel_count = width
-        .checked_mul(height)
-        .ok_or_else(|| error::ImageError::Invalid("array dimensions are too large".to_string()))?
-        as usize;
-    let data = obj.call_method0("tobytes")?.extract::<Vec<u8>>()?;
-    if data.len() != pixel_count {
-        return Err(error::ImageError::Invalid(format!(
-            "array byte length mismatch: expected {pixel_count}, got {}",
-            data.len()
-        ))
-        .into());
-    }
+    let dimensions = Dimensions::new(width, height)?;
 
-    Ok(ImageSource::ArrayData {
-        data,
-        width,
-        height,
+    Ok(ImageSource::Pixels {
+        data: get_pixel_bytes(obj)?,
+        dimensions,
     })
 }
 
@@ -250,21 +238,12 @@ fn get_image_source<'a>(obj: &Bound<'a, PyAny>) -> Result<ImageSource<'a>> {
 
         let width = target_obj.getattr("width")?.extract::<u32>()?;
         let height = target_obj.getattr("height")?.extract::<u32>()?;
+        let dimensions = Dimensions::new(width, height)?;
 
-        // Borrowing the `bytes` from `tobytes` avoids copying the pixels into a `Vec`.
-        // Any other buffer still goes through `extract`, at the cost of that copy.
-        match target_obj.call_method0("tobytes")?.cast_into::<PyBytes>() {
-            Ok(data) => Ok(ImageSource::ImageProtocolDataView {
-                data,
-                width,
-                height,
-            }),
-            Err(err) => Ok(ImageSource::ImageProtocolData {
-                data: err.into_inner().extract::<Vec<u8>>()?,
-                width,
-                height,
-            }),
-        }
+        Ok(ImageSource::Pixels {
+            data: get_pixel_bytes(target_obj)?,
+            dimensions,
+        })
     }
 }
 
