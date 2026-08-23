@@ -76,7 +76,7 @@ fn barcode_decode_error(message: String) -> PyErr {
     raise(PyClassInitializer::from(PyBaseError { message }).add_subclass(PyBarcodeDecodeError))
 }
 
-pub(crate) fn unsupported_format_error(format: String) -> PyErr {
+fn unsupported_format_error(format: String) -> PyErr {
     let message = format!("`{}` is not a supported barcode format", format);
     raise(PyClassInitializer::from(PyBaseError { message }).add_subclass(PyUnsupportedFormatError { format }))
 }
@@ -92,23 +92,33 @@ pub(crate) enum ImageError {
     Invalid(String),
 }
 
+/// A failure this module detects on its own.
 #[derive(Debug)]
-pub(crate) enum Error {
+pub(crate) enum ModuleError {
     Image(ImageError),
     Io(std::io::Error),
-    Python(PyErr),
-    Decode(String),
+    Type(String),
+    UnsupportedFormat(String),
+    BarcodeDecode(String),
 }
 
-impl Error {
-    pub(crate) fn type_error(message: impl Into<String>) -> Self {
-        Self::Python(pyo3::exceptions::PyTypeError::new_err(message.into()))
+/// A failure of this module, or an exception raised by Python itself.
+#[derive(Debug)]
+pub(crate) enum Error {
+    Own(ModuleError),
+    /// An exception raised by Python itself, carried through unchanged.
+    Python(PyErr),
+}
+
+impl From<ModuleError> for Error {
+    fn from(value: ModuleError) -> Self {
+        Self::Own(value)
     }
 }
 
 impl From<ImageError> for Error {
     fn from(value: ImageError) -> Self {
-        Self::Image(value)
+        Self::Own(ModuleError::Image(value))
     }
 }
 
@@ -120,28 +130,31 @@ impl From<PyErr> for Error {
 
 impl From<std::io::Error> for Error {
     fn from(value: std::io::Error) -> Self {
-        Self::Io(value)
+        Self::Own(ModuleError::Io(value))
     }
 }
 
 impl From<image::ImageError> for Error {
     fn from(value: image::ImageError) -> Self {
-        Self::Image(ImageError::Decode(value))
+        Self::Own(ModuleError::Image(ImageError::Decode(value)))
     }
 }
 
 impl From<reader_core::Error> for Error {
     fn from(value: reader_core::Error) -> Self {
-        match value {
-            reader_core::Error::InvalidInput(message) => Self::Image(ImageError::Invalid(message)),
-            other => Self::Decode(other.to_string()),
-        }
+        Self::Own(match value {
+            reader_core::Error::InvalidInput(message) => {
+                ModuleError::Image(ImageError::Invalid(message))
+            }
+            reader_core::Error::DecodeError(message) => ModuleError::BarcodeDecode(message),
+            reader_core::Error::UnsupportedFormat(name) => ModuleError::UnsupportedFormat(name),
+        })
     }
 }
 
-impl From<Error> for PyErr {
-    fn from(value: Error) -> Self {
-        use Error::*;
+impl From<ModuleError> for PyErr {
+    fn from(value: ModuleError) -> Self {
+        use ModuleError::*;
 
         match value {
             Image(e) => match e {
@@ -153,8 +166,18 @@ impl From<Error> for PyErr {
                 std::io::ErrorKind::NotFound => pyo3::exceptions::PyFileNotFoundError::new_err(e),
                 _ => e.into(),
             },
-            Python(e) => e,
-            Decode(e) => barcode_decode_error(e),
+            Type(message) => pyo3::exceptions::PyTypeError::new_err(message),
+            UnsupportedFormat(format) => unsupported_format_error(format),
+            BarcodeDecode(e) => barcode_decode_error(e),
+        }
+    }
+}
+
+impl From<Error> for PyErr {
+    fn from(value: Error) -> Self {
+        match value {
+            Error::Own(e) => e.into(),
+            Error::Python(e) => e,
         }
     }
 }

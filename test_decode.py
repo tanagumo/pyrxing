@@ -394,7 +394,7 @@ def test_image_error_carries_its_message() -> None:
         pyrxing.read_barcode(image)
 
     assert isinstance(caught.value, pyrxing.ImageError)
-    assert "unsupported mode(CMYK)" in str(caught.value)
+    assert "image mode must be grayscale, RGB(A), or palette, got CMYK" in str(caught.value)
     assert not hasattr(caught.value, "message")
 
 
@@ -415,7 +415,7 @@ def test_read_barcode_accepts_an_fspath_implementation() -> None:
     "image", [123, None, b"assets/test_qr_code.png", object(), ["assets/test_qr_code.png"]]
 )
 def test_read_barcode_rejects_an_argument_of_another_type(image: object) -> None:
-    with pytest.raises(TypeError, match="str, os.PathLike or ImageProtocol"):
+    with pytest.raises(TypeError, match="str, os.PathLike, ImageProtocol value, or uint8 array"):
         pyrxing.read_barcode(image)
 
 
