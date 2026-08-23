@@ -119,6 +119,32 @@ class InvalidArrayData:
         return b"\x00" * 3
 
 
+class CountingArray:
+    """An array interface implementation counting its tobytes calls."""
+
+    def __init__(self, height: int, width: int, data: bytes) -> None:
+        self.__array_interface__ = {
+            "shape": (height, width),
+            "typestr": "|u1",
+            "version": 3,
+        }
+        self._data = data
+        self.tobytes_calls = 0
+
+    def tobytes(self) -> bytes:
+        self.tobytes_calls += 1
+        return self._data
+
+
+def test_rejects_an_oversized_array_before_reading_the_pixels() -> None:
+    image = CountingArray(1, 0x10000, b"")
+
+    with pytest.raises(pyrxing.ImageError, match="is 65535, got 65536x1"):
+        pyrxing.read_barcode(image)
+
+    assert image.tobytes_calls == 0
+
+
 def test_rejects_mismatched_array_data() -> None:
     with pytest.raises(pyrxing.ImageError, match="expected 4, got 3"):
         pyrxing.read_barcode(InvalidArrayData())
@@ -137,8 +163,10 @@ class SizedImage:
         self.width = width
         self.height = height
         self._data = data
+        self.tobytes_calls = 0
 
     def tobytes(self) -> bytes:
+        self.tobytes_calls += 1
         return self._data
 
     def convert(self, mode: str) -> Self:
@@ -346,10 +374,10 @@ def test_read_barcode_accepts_a_buffer_other_than_bytes() -> None:
     assert pyrxing.read_barcode(image).text == QR_CODE_VALUE
 
 
-def test_read_barcode_rejects_a_pixel_count_beyond_u32() -> None:
+def test_read_barcode_rejects_a_side_wrapping_a_u32_product() -> None:
     # 0x80000000 * 2 is 2**32, so a wrapping multiplication would report zero pixels
     # and let an empty buffer through.
-    with pytest.raises(pyrxing.ImageError, match="expected 4294967296, got 0"):
+    with pytest.raises(pyrxing.ImageError, match="is 65535, got 2147483648x2"):
         pyrxing.read_barcode(SizedImage(0x80000000, 2, b""))
 
 
@@ -412,8 +440,10 @@ def test_read_barcode_rejects_an_incomplete_image_protocol() -> None:
 def test_read_barcode_rejects_a_dimension_beyond_the_reader_limit() -> None:
     image = SizedImage(0x10000, 1, bytes(0x10000))
 
-    with pytest.raises(pyrxing.ImageError, match="65535"):
+    with pytest.raises(pyrxing.ImageError, match="is 65535, got 65536x1"):
         pyrxing.read_barcode(image)
+
+    assert image.tobytes_calls == 0
 
 
 def stub_exception_bases() -> dict[str, str]:

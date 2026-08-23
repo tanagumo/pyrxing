@@ -4,12 +4,12 @@ use std::fs::File;
 use std::io::BufReader;
 use std::path::PathBuf;
 
-use image::ImageReader;
+use image::{DynamicImage, ImageDecoder, ImageReader};
 use pyo3::prelude::*;
 use pyo3::pybacked::PyBackedStr;
 use pyo3::types::{PyBytes, PyString};
 
-use reader_core::{self, GrayImage};
+use reader_core::{self, Dimensions, GrayImage};
 
 type Result<T> = std::result::Result<T, error::Error>;
 
@@ -60,23 +60,28 @@ impl TryFrom<reader_core::DecodeResult> for DecodeResult {
     }
 }
 
+/// Pixels owned by Rust, or borrowed from a Python `bytes`.
+#[derive(Debug)]
+enum PixelBytes<'a> {
+    Owned(Vec<u8>),
+    Borrowed(Bound<'a, PyBytes>),
+}
+
+impl AsRef<[u8]> for PixelBytes<'_> {
+    fn as_ref(&self) -> &[u8] {
+        match self {
+            PixelBytes::Owned(data) => data,
+            PixelBytes::Borrowed(data) => data.as_bytes(),
+        }
+    }
+}
+
 #[derive(Debug)]
 enum ImageSource<'a> {
     Path(PathBuf),
-    ArrayData {
-        data: Vec<u8>,
-        width: u32,
-        height: u32,
-    },
-    ImageProtocolData {
-        data: Vec<u8>,
-        width: u32,
-        height: u32,
-    },
-    ImageProtocolDataView {
-        data: Bound<'a, PyBytes>,
-        width: u32,
-        height: u32,
+    Pixels {
+        data: PixelBytes<'a>,
+        dimensions: Dimensions,
     },
 }
 
@@ -93,31 +98,35 @@ impl<'a, 'b: 'a> TryInto<GrayImage<'a>> for &'a ImageSource<'b> {
                 let capacity = sizes.iter().min().unwrap();
 
                 let buf_reader = BufReader::with_capacity(*capacity, file);
-                let reader = ImageReader::new(buf_reader).with_guessed_format()?;
-                let image_buffer = reader.decode()?.to_luma8();
-                let width = image_buffer.width();
-                let height = image_buffer.height();
-                Ok(GrayImage::new(image_buffer.into_raw(), width, height)?)
+                let decoder = ImageReader::new(buf_reader)
+                    .with_guessed_format()?
+                    .into_decoder()?;
+
+                // The header alone carries the size, so an oversized image is turned away
+                // before the pixels get decoded and converted below.
+                let (width, height) = decoder.dimensions();
+                let dimensions = Dimensions::new(width, height)?;
+
+                let image_buffer = DynamicImage::from_decoder(decoder)?.into_luma8();
+                Ok(GrayImage::new(image_buffer.into_raw(), dimensions)?)
             }
-            ImageSource::ArrayData {
-                data,
-                width,
-                height,
-            } => Ok(GrayImage::new(data, *width, *height)?),
-            ImageSource::ImageProtocolData {
-                data,
-                width,
-                height,
-            } => Ok(GrayImage::new(data, *width, *height)?),
-            ImageSource::ImageProtocolDataView {
-                data,
-                width,
-                height,
-            } => Ok(GrayImage::new(data.as_bytes(), *width, *height)?),
+            ImageSource::Pixels { data, dimensions } => {
+                Ok(GrayImage::new(data.as_ref(), *dimensions)?)
+            }
         }
     }
 }
 
+/// Reads the pixels out of `tobytes`.
+///
+/// Borrowing the `bytes` avoids copying the pixels into a `Vec`. Any other buffer
+/// still goes through `extract`, at the cost of that copy.
+fn get_pixel_bytes<'a>(obj: &Bound<'a, PyAny>) -> Result<PixelBytes<'a>> {
+    match obj.call_method0("tobytes")?.cast_into::<PyBytes>() {
+        Ok(data) => Ok(PixelBytes::Borrowed(data)),
+        Err(err) => Ok(PixelBytes::Owned(err.into_inner().extract::<Vec<u8>>()?)),
+    }
+}
 
 fn get_array_source<'a>(obj: &Bound<'a, PyAny>) -> Result<ImageSource<'a>> {
     let array_interface = obj.getattr("__array_interface__")?;
@@ -163,23 +172,11 @@ fn get_array_source<'a>(obj: &Bound<'a, PyAny>) -> Result<ImageSource<'a>> {
         .map_err(|_| error::ImageError::Invalid("array height is too large".to_string()))?;
     let width = u32::try_from(width)
         .map_err(|_| error::ImageError::Invalid("array width is too large".to_string()))?;
-    let pixel_count = width
-        .checked_mul(height)
-        .ok_or_else(|| error::ImageError::Invalid("array dimensions are too large".to_string()))?
-        as usize;
-    let data = obj.call_method0("tobytes")?.extract::<Vec<u8>>()?;
-    if data.len() != pixel_count {
-        return Err(error::ImageError::Invalid(format!(
-            "array byte length mismatch: expected {pixel_count}, got {}",
-            data.len()
-        ))
-        .into());
-    }
+    let dimensions = Dimensions::new(width, height)?;
 
-    Ok(ImageSource::ArrayData {
-        data,
-        width,
-        height,
+    Ok(ImageSource::Pixels {
+        data: get_pixel_bytes(obj)?,
+        dimensions,
     })
 }
 
@@ -241,21 +238,12 @@ fn get_image_source<'a>(obj: &Bound<'a, PyAny>) -> Result<ImageSource<'a>> {
 
         let width = target_obj.getattr("width")?.extract::<u32>()?;
         let height = target_obj.getattr("height")?.extract::<u32>()?;
+        let dimensions = Dimensions::new(width, height)?;
 
-        // Borrowing the `bytes` from `tobytes` avoids copying the pixels into a `Vec`.
-        // Any other buffer still goes through `extract`, at the cost of that copy.
-        match target_obj.call_method0("tobytes")?.cast_into::<PyBytes>() {
-            Ok(data) => Ok(ImageSource::ImageProtocolDataView {
-                data,
-                width,
-                height,
-            }),
-            Err(err) => Ok(ImageSource::ImageProtocolData {
-                data: err.into_inner().extract::<Vec<u8>>()?,
-                width,
-                height,
-            }),
-        }
+        Ok(ImageSource::Pixels {
+            data: get_pixel_bytes(target_obj)?,
+            dimensions,
+        })
     }
 }
 
@@ -339,4 +327,76 @@ fn pyrxing(m: &Bound<'_, PyModule>) -> PyResult<()> {
 }
 
 #[cfg(test)]
-mod tests {}
+mod tests {
+    use super::*;
+
+    fn crc32(bytes: &[u8]) -> u32 {
+        let mut crc = 0xFFFF_FFFFu32;
+        for byte in bytes {
+            crc ^= *byte as u32;
+            for _ in 0..8 {
+                crc = if crc & 1 == 0 {
+                    crc >> 1
+                } else {
+                    (crc >> 1) ^ 0xEDB8_8320
+                };
+            }
+        }
+        !crc
+    }
+
+    /// Builds a grayscale PNG sized `width` by `height`, holding an `IHDR` chunk alone.
+    fn png_without_pixels(width: u32, height: u32) -> Vec<u8> {
+        let mut ihdr = Vec::with_capacity(17);
+        ihdr.extend_from_slice(b"IHDR");
+        ihdr.extend_from_slice(&width.to_be_bytes());
+        ihdr.extend_from_slice(&height.to_be_bytes());
+        // 8 bits per sample, grayscale, deflate, adaptive filtering, no interlacing
+        ihdr.extend_from_slice(&[8, 0, 0, 0, 0]);
+
+        let mut bytes = Vec::new();
+        bytes.extend_from_slice(&[0x89, b'P', b'N', b'G', 0x0D, 0x0A, 0x1A, 0x0A]);
+        bytes.extend_from_slice(&13u32.to_be_bytes());
+        bytes.extend_from_slice(&ihdr);
+        bytes.extend_from_slice(&crc32(&ihdr).to_be_bytes());
+        // An empty `IDAT` lets the header parse succeed while leaving no pixels to decode.
+        for name in [b"IDAT", b"IEND"] {
+            bytes.extend_from_slice(&0u32.to_be_bytes());
+            bytes.extend_from_slice(name);
+            bytes.extend_from_slice(&crc32(name).to_be_bytes());
+        }
+        bytes
+    }
+
+    fn write_temp_file(name: &str, bytes: &[u8]) -> PathBuf {
+        let path = std::env::temp_dir().join(name);
+        std::fs::write(&path, bytes).unwrap();
+        path
+    }
+
+    #[test]
+    fn test_path_decodes_a_stored_barcode() {
+        let source = ImageSource::Path(PathBuf::from("../assets/test_qr_code.png"));
+
+        let image: GrayImage<'_> = (&source).try_into().unwrap();
+        let decoded = reader_core::decode_single(image, &[]).unwrap().unwrap();
+
+        assert_eq!(decoded.text(), "https://demo.net/demo/7809");
+    }
+
+    #[test]
+    fn test_path_rejects_a_side_beyond_the_reader_limit_before_decoding() {
+        let path = write_temp_file("pyrxing_oversized_side.png", &png_without_pixels(0x10000, 1));
+        let source = ImageSource::Path(path);
+
+        let result: Result<GrayImage<'_>> = (&source).try_into();
+
+        // The pixels are missing, so decoding would fail first unless the side is
+        // checked against the reader limit beforehand.
+        let error = result.unwrap_err();
+        assert!(
+            matches!(&error, error::Error::Image(error::ImageError::Invalid(m)) if m.contains("65535")),
+            "unexpected error: {error:?}"
+        );
+    }
+}

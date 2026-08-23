@@ -338,44 +338,70 @@ impl DecodeResult {
     }
 }
 
-#[derive(Debug)]
-pub struct GrayImage<'a> {
-    raw: Cow<'a, [u8]>,
-    width: u32,
-    height: u32,
-    format: ImageFormat,
-}
-
 /// Largest side length the zxing reader accepts.
 const MAX_SIDE: u32 = 65535;
 
-impl<'a> GrayImage<'a> {
-    /// Builds a grayscale image from one luminance byte per pixel.
+/// Image size within the reader limit.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Dimensions {
+    width: u32,
+    height: u32,
+}
+
+impl Dimensions {
+    /// Builds an image size from a width and a height.
     ///
-    /// Returns [`Error::InvalidInput`] unless `raw` holds exactly `width` * `height` bytes
-    /// and neither side exceeds [`MAX_SIDE`].
-    pub fn new(raw: impl Into<Cow<'a, [u8]>>, width: u32, height: u32) -> Result<Self> {
-        let raw = raw.into();
-        let pixel_count = (width as usize).checked_mul(height as usize).ok_or_else(|| {
-            Error::InvalidInput(format!("{}x{} is too large to address", width, height))
-        })?;
-        if raw.len() != pixel_count {
-            return Err(Error::InvalidInput(format!(
-                "the length of the `raw` must be equal to `width` * `height`: expected {}, got {}",
-                pixel_count,
-                raw.len()
-            )));
-        }
+    /// Returns [`Error::InvalidInput`] unless both sides stay within [`MAX_SIDE`].
+    pub fn new(width: u32, height: u32) -> Result<Self> {
         if width > MAX_SIDE || height > MAX_SIDE {
             return Err(Error::InvalidInput(format!(
                 "the maximum image width and height is {}, got {}x{}",
                 MAX_SIDE, width, height
             )));
         }
+        Ok(Self { width, height })
+    }
+
+    pub fn width(&self) -> u32 {
+        self.width
+    }
+
+    pub fn height(&self) -> u32 {
+        self.height
+    }
+
+    /// Luminance byte count for an image of this size.
+    pub fn pixel_count(&self) -> usize {
+        // Both sides stay within MAX_SIDE, so the product never exceeds
+        // 65535 * 65535 and fits a 32-bit `usize` as well.
+        self.width as usize * self.height as usize
+    }
+}
+
+#[derive(Debug)]
+pub struct GrayImage<'a> {
+    raw: Cow<'a, [u8]>,
+    dimensions: Dimensions,
+    format: ImageFormat,
+}
+
+impl<'a> GrayImage<'a> {
+    /// Builds a grayscale image from one luminance byte per pixel.
+    ///
+    /// Returns [`Error::InvalidInput`] unless `raw` holds exactly
+    /// [`Dimensions::pixel_count`] bytes.
+    pub fn new(raw: impl Into<Cow<'a, [u8]>>, dimensions: Dimensions) -> Result<Self> {
+        let raw = raw.into();
+        if raw.len() != dimensions.pixel_count() {
+            return Err(Error::InvalidInput(format!(
+                "the length of the `raw` must be equal to `width` * `height`: expected {}, got {}",
+                dimensions.pixel_count(),
+                raw.len()
+            )));
+        }
         Ok(Self {
             raw,
-            width,
-            height,
+            dimensions,
             format: ImageFormat::Lum,
         })
     }
@@ -385,8 +411,13 @@ impl<'a> TryFrom<&'a GrayImage<'a>> for ImageView<'a> {
     type Error = Error;
 
     fn try_from(value: &'a GrayImage<'a>) -> Result<Self> {
-        ImageView::from_slice(&value.raw, value.width, value.height, value.format)
-            .map_err(|e| Error::InvalidInput(e.to_string()))
+        ImageView::from_slice(
+            &value.raw,
+            value.dimensions.width(),
+            value.dimensions.height(),
+            value.format,
+        )
+        .map_err(|e| Error::InvalidInput(e.to_string()))
     }
 }
 
@@ -446,6 +477,11 @@ mod tests {
 
     /// Pixels of a rendered barcode along with its size.
     type Rendered = (Vec<u8>, u32, u32);
+
+    /// Builds a grayscale image from `pixels` sized `width` by `height`.
+    fn gray_image(pixels: &[u8], width: u32, height: u32) -> GrayImage<'_> {
+        GrayImage::new(pixels, Dimensions::new(width, height).unwrap()).unwrap()
+    }
 
     /// Renders `text` as a barcode and returns the pixels along with the size.
     fn render(format: BarcodeFormat, text: &str) -> Rendered {
@@ -549,45 +585,50 @@ mod tests {
     }
 
     #[test]
-    fn test_gray_image_new_accepts_a_matching_length() {
-        let image = GrayImage::new(vec![0u8; 12], 4, 3).unwrap();
+    fn test_dimensions_new_accepts_the_largest_side() {
+        let dimensions = Dimensions::new(MAX_SIDE, MAX_SIDE).unwrap();
 
-        assert_eq!((image.width, image.height), (4, 3));
+        assert_eq!(dimensions.pixel_count(), 65535usize * 65535);
+    }
+
+    #[test]
+    fn test_dimensions_new_rejects_a_side_beyond_the_reader_limit() {
+        let error = Dimensions::new(0x10000, 1).unwrap_err();
+
+        assert!(
+            matches!(&error, Error::InvalidInput(m) if m.contains("65535") && m.contains("65536x1")),
+            "unexpected error: {error}"
+        );
+    }
+
+    #[test]
+    fn test_dimensions_new_rejects_a_side_wrapping_a_u32_product() {
+        // 0x80000000 * 2 is 2^32, so a u32 multiplication would report zero pixels
+        // and let an empty buffer through.
+        let error = Dimensions::new(0x8000_0000, 2).unwrap_err();
+
+        assert!(
+            matches!(&error, Error::InvalidInput(m) if m.contains("65535") && m.contains("2147483648x2")),
+            "unexpected error: {error}"
+        );
+    }
+
+    #[test]
+    fn test_gray_image_new_accepts_a_matching_length() {
+        let image = GrayImage::new(vec![0u8; 12], Dimensions::new(4, 3).unwrap()).unwrap();
+
+        assert_eq!(
+            (image.dimensions.width(), image.dimensions.height()),
+            (4, 3)
+        );
     }
 
     #[test]
     fn test_gray_image_new_rejects_a_mismatched_length() {
-        let error = GrayImage::new(vec![0u8; 11], 4, 3).unwrap_err();
+        let error = GrayImage::new(vec![0u8; 11], Dimensions::new(4, 3).unwrap()).unwrap_err();
 
         assert!(
             matches!(&error, Error::InvalidInput(m) if m.contains("11") && m.contains("12")),
-            "unexpected error: {error}"
-        );
-    }
-
-    #[test]
-    fn test_gray_image_new_rejects_a_side_beyond_the_reader_limit() {
-        let error = GrayImage::new(vec![0u8; 0x10000], 0x10000, 1).unwrap_err();
-
-        assert!(
-            matches!(&error, Error::InvalidInput(m) if m.contains("65535")),
-            "unexpected error: {error}"
-        );
-    }
-
-    #[test]
-    fn test_gray_image_new_accepts_the_largest_side() {
-        assert!(GrayImage::new(vec![0u8; 65535], 65535, 1).is_ok());
-    }
-
-    #[test]
-    fn test_gray_image_new_counts_pixels_without_wrapping() {
-        // 0x80000000 * 2 is 2^32, so a u32 multiplication would report zero pixels
-        // and let an empty buffer through.
-        let error = GrayImage::new(Vec::new(), 0x8000_0000, 2).unwrap_err();
-
-        assert!(
-            matches!(&error, Error::InvalidInput(m) if m.contains("4294967296")),
             "unexpected error: {error}"
         );
     }
@@ -659,7 +700,7 @@ mod tests {
     fn test_decode_single_reads_back_a_rendered_barcode() {
         for (format, payload, text, reported) in ROUND_TRIPS {
             let (pixels, width, height) = render(format, payload);
-            let image = GrayImage::new(&pixels[..], width, height).unwrap();
+            let image = gray_image(&pixels[..], width, height);
 
             let decoded = decode_single(image, &[]).unwrap().expect(payload);
 
@@ -670,7 +711,8 @@ mod tests {
 
     #[test]
     fn test_decode_single_returns_nothing_for_a_blank_image() {
-        let image = GrayImage::new(vec![0xFFu8; 64 * 64], 64, 64).unwrap();
+        let image =
+            GrayImage::new(vec![0xFFu8; 64 * 64], Dimensions::new(64, 64).unwrap()).unwrap();
 
         assert!(decode_single(image, &[]).unwrap().is_none());
     }
@@ -678,7 +720,7 @@ mod tests {
     #[test]
     fn test_decode_single_keeps_a_symbol_of_a_requested_format() {
         let (pixels, width, height) = render(BarcodeFormat::QRCode, "QR_PAYLOAD");
-        let image = GrayImage::new(&pixels[..], width, height).unwrap();
+        let image = gray_image(&pixels[..], width, height);
 
         let decoded = decode_single(image, &[BarcodeFormat::QRCode, BarcodeFormat::EAN13]).unwrap();
 
@@ -688,7 +730,7 @@ mod tests {
     #[test]
     fn test_decode_single_drops_a_symbol_of_another_format() {
         let (pixels, width, height) = render(BarcodeFormat::QRCode, "QR_PAYLOAD");
-        let image = GrayImage::new(&pixels[..], width, height).unwrap();
+        let image = gray_image(&pixels[..], width, height);
 
         let decoded = decode_single(image, &[BarcodeFormat::EAN13]).unwrap();
 
@@ -700,7 +742,7 @@ mod tests {
         let (pixels, width, height) = render(BarcodeFormat::QRCode, "QR_PAYLOAD");
         let formats = [BarcodeFormat::QRCode; 33];
 
-        let image = GrayImage::new(&pixels[..], width, height).unwrap();
+        let image = gray_image(&pixels[..], width, height);
         let decoded = decode_single(image, &formats).unwrap();
 
         assert_eq!(decoded.unwrap().text(), "QR_PAYLOAD");
@@ -720,18 +762,10 @@ mod tests {
     #[test]
     fn test_decode_stops_at_one_symbol_outside_multi_mode() {
         let (pixels, width, height) = two_qr_codes();
-        let multi = decode(
-            GrayImage::new(&pixels[..], width, height).unwrap(),
-            &[],
-            true,
-        );
+        let multi = decode(gray_image(&pixels[..], width, height), &[], true);
         assert_eq!(multi.unwrap().len(), 2, "the canvas must carry two symbols");
 
-        let single = decode(
-            GrayImage::new(&pixels[..], width, height).unwrap(),
-            &[],
-            false,
-        );
+        let single = decode(gray_image(&pixels[..], width, height), &[], false);
 
         assert_eq!(single.unwrap().len(), 1);
     }
@@ -739,7 +773,7 @@ mod tests {
     #[test]
     fn test_decode_multiple_reads_every_symbol() {
         let (pixels, width, height) = two_qr_codes();
-        let image = GrayImage::new(&pixels[..], width, height).unwrap();
+        let image = gray_image(&pixels[..], width, height);
 
         let mut texts = decode_multiple(image, &[])
             .unwrap()
@@ -754,7 +788,7 @@ mod tests {
     #[test]
     fn test_decode_result_points_trace_the_position_clockwise() {
         let (pixels, width, height) = render(BarcodeFormat::QRCode, "QR_PAYLOAD");
-        let image = GrayImage::new(&pixels[..], width, height).unwrap();
+        let image = gray_image(&pixels[..], width, height);
         let decoded = decode_single(image, &[]).unwrap().unwrap();
 
         let position = decoded.position();
