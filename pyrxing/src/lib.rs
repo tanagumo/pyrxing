@@ -50,12 +50,7 @@ impl TryFrom<reader_core::DecodeResult> for DecodeResult {
                 .iter()
                 .map(|p| Point { x: p.x(), y: p.y() })
                 .collect::<Vec<_>>(),
-            format: format!(
-                "{}",
-                value
-                    .format()
-                    .map_err(|e| error::Error::BarcodeDecode(e.to_string()))?
-            ),
+            format: format!("{}", value.format()?),
         })
     }
 }

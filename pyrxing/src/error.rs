@@ -131,7 +131,8 @@ impl From<reader_core::Error> for Error {
     fn from(value: reader_core::Error) -> Self {
         match value {
             reader_core::Error::InvalidInput(message) => Self::Image(ImageError::Invalid(message)),
-            other => Self::BarcodeDecode(other.to_string()),
+            reader_core::Error::DecodeError(message) => Self::BarcodeDecode(message),
+            reader_core::Error::UnsupportedFormat(name) => Self::UnsupportedFormat(name),
         }
     }
 }
