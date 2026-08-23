@@ -201,10 +201,11 @@ fn get_image_source<'a>(obj: &Bound<'a, PyAny>) -> Result<ImageSource<'a>> {
             if obj.hasattr("__array_interface__")? {
                 return get_array_source(obj);
             }
-            return Err(error::Error::Type(
+            return Err(error::ModuleError::Type(
                 "image must be a str, os.PathLike or ImageProtocol value or a uint8 array"
                     .to_string(),
-            ));
+            )
+            .into());
         }
 
         let mode = obj.getattr("mode")?.extract::<PyBackedStr>()?;
@@ -257,7 +258,7 @@ fn decode(obj: &Bound<'_, PyAny>, formats: Option<Vec<String>>, multi: bool) -> 
         .into_iter()
         .map(|name| {
             name.parse::<reader_core::BarcodeFormat>()
-                .map_err(|_| error::Error::UnsupportedFormat(name))
+                .map_err(|_| error::Error::from(error::ModuleError::UnsupportedFormat(name)))
         })
         .collect::<std::result::Result<Vec<_>, _>>()?;
 
@@ -274,11 +275,7 @@ fn decode(obj: &Bound<'_, PyAny>, formats: Option<Vec<String>>, multi: bool) -> 
     } else {
         reader_core::decode_single(gray_image, formats.as_slice())
             .map_err(error::Error::from)
-            .and_then(|opt| {
-                opt.map(|r| r.try_into())
-                    .transpose()
-                    .map(Decoded::Single)
-            })
+            .and_then(|opt| opt.map(|r| r.try_into()).transpose().map(Decoded::Single))
     }
 }
 
@@ -382,7 +379,10 @@ mod tests {
 
     #[test]
     fn test_path_rejects_a_side_beyond_the_reader_limit_before_decoding() {
-        let path = write_temp_file("pyrxing_oversized_side.png", &png_without_pixels(0x10000, 1));
+        let path = write_temp_file(
+            "pyrxing_oversized_side.png",
+            &png_without_pixels(0x10000, 1),
+        );
         let source = ImageSource::Path(path);
 
         let result: Result<GrayImage<'_>> = (&source).try_into();
@@ -391,7 +391,11 @@ mod tests {
         // checked against the reader limit beforehand.
         let error = result.unwrap_err();
         assert!(
-            matches!(&error, error::Error::Image(error::ImageError::Invalid(m)) if m.contains("65535")),
+            matches!(
+                &error,
+                error::Error::Own(error::ModuleError::Image(error::ImageError::Invalid(m)))
+                    if m.contains("65535")
+            ),
             "unexpected error: {error:?}"
         );
     }
