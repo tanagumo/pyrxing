@@ -202,8 +202,7 @@ fn get_image_source<'a>(obj: &Bound<'a, PyAny>) -> Result<ImageSource<'a>> {
                 return get_array_source(obj);
             }
             return Err(error::ModuleError::Type(
-                "image must be a str, os.PathLike or ImageProtocol value or a uint8 array"
-                    .to_string(),
+                "image must be a str, os.PathLike, ImageProtocol value, or uint8 array".to_string(),
             )
             .into());
         }
@@ -217,10 +216,8 @@ fn get_image_source<'a>(obj: &Bound<'a, PyAny>) -> Result<ImageSource<'a>> {
                 converted_opt = Some(obj.call_method1("convert", ("L",))?);
             }
             _ => {
-                let message = format!(
-                    "The specified image has an unsupported mode({}). Only grayscale, RGB(A), or palette mode images are supported.",
-                    mode
-                );
+                let message =
+                    format!("image mode must be grayscale, RGB(A), or palette, got {mode}");
                 return Err(error::ImageError::UnsupportedMode(message).into());
             }
         }
