@@ -8,12 +8,12 @@ This library offers efficient barcode scanning in pure Python environments, with
 
 ## 🚀 Features
 
-* ⚡ **High performance**: Powered by zxing-cpp 0.5.2 C++ library through optimized Rust bindings with excellent barcode detection performance
+* ⚡ **High performance**: Powered by zxing-cpp 0.5.3 C++ library through optimized Rust bindings with excellent barcode detection performance
 * 🐍 **Python-native API**: Simple interface with just two functions: `read_barcode` and `read_barcodes`
 * 🔢 **NumPy and OpenCV support**: Decode `uint8` image arrays directly, including non-contiguous views
 * 📦 **No system dependencies**: No need for zbar, JRE, or any external libraries
 * 🏗 **Alpine Linux compatible**: Pre-built `musllinux` wheels available (no build required)
-* 🧠 **Type hinting & autocompletion**: Includes `.pyi` stub files with 32 barcode format variants
+* 🧠 **Type hinting & autocompletion**: Includes `.pyi` stub files with 35 barcode format variants
 * 🔒 **Safe and minimal**: No unnecessary features — just barcode reading
 * ⚡ **Competitive performance**: Matches or exceeds official zxing-cpp Python bindings across all formats
 
@@ -53,9 +53,9 @@ pip install pyrxing
 pyrxing delivers competitive performance across a comprehensive range of barcode formats, matching or exceeding the official zxing-cpp Python bindings:
 
 **Performance Summary:**
-- **Single detection**: Comparable performance with zxing-cpp (within ±26% across all formats)
-- **Multiple detection**: Comparable performance with zxing-cpp (within ±18% across all formats)
-- **Overall**: Nearly identical median performance, with pyrxing being faster on most formats
+- **Single detection**: Comparable performance with zxing-cpp (between 2% slower and 28% faster)
+- **Multiple detection**: Faster than zxing-cpp on every format (up to 11%)
+- **Overall**: pyrxing leads on 39 of the 40 measurements
 
 ### Benchmark Results (μs per decode)
 
@@ -63,59 +63,59 @@ pyrxing delivers competitive performance across a comprehensive range of barcode
 
 | Format      | pyrxing | zxing-cpp | Difference |
 |-------------|---------|-----------|------------|
-| Micro QR    | 65.2    | 68.4      | **5% faster** |
-| rMQR        | 73.9    | 74.7      | **1% faster** |
-| Aztec       | 84.0    | 85.7      | **2% faster** |
-| DataBar     | 192.4   | 193.6     | **1% faster** |
-| DataBar Ltd.| 190.1   | 192.6     | **1% faster** |
-| Data Matrix | 246.4   | 334.2     | **26% faster** |
-| Code 93     | 272.6   | 274.8     | **1% faster** |
-| DX Film Edge| 293.3   | 336.3     | **13% faster** |
-| QR Code     | 299.6   | 304.5     | **2% faster** |
-| ITF         | 340.1   | 412.2     | **17% faster** |
-| DataBar Exp.| 360.3   | 357.6     | 1% slower |
-| PDF417      | 368.1   | 406.7     | **9% faster** |
-| Codabar     | 412.6   | 473.7     | **13% faster** |
-| UPC-E       | 548.9   | 687.9     | **20% faster** |
-| EAN-8       | 863.0   | 1084.3    | **20% faster** |
-| MaxiCode    | 923.8   | 1052.4    | **12% faster** |
-| Code 39     | 1042.9  | 1249.8    | **17% faster** |
-| EAN-13      | 1111.1  | 1403.8    | **21% faster** |
-| UPC-A       | 1123.4  | 1412.0    | **20% faster** |
-| Code 128    | 2171.9  | 2638.8    | **18% faster** |
+| Micro QR    | 47.5    | 50.1      | **5% faster** |
+| rMQR        | 50.7    | 54.3      | **7% faster** |
+| Aztec       | 55.9    | 60.7      | **8% faster** |
+| DataBar Ltd.| 190.9   | 194.3     | **2% faster** |
+| QR Code     | 192.2   | 202.6     | **5% faster** |
+| DataBar     | 197.9   | 200.8     | **1% faster** |
+| Data Matrix | 198.0   | 273.1     | **28% faster** |
+| Code 93     | 277.4   | 284.8     | **3% faster** |
+| DX Film Edge| 305.0   | 337.3     | **10% faster** |
+| PDF417      | 337.5   | 370.6     | **9% faster** |
+| ITF         | 342.7   | 403.9     | **15% faster** |
+| DataBar Exp.| 387.7   | 379.7     | 2% slower |
+| Codabar     | 418.8   | 478.1     | **12% faster** |
+| UPC-E       | 542.9   | 660.2     | **18% faster** |
+| EAN-8       | 851.3   | 1033.1    | **18% faster** |
+| MaxiCode    | 984.0   | 1109.4    | **11% faster** |
+| Code 39     | 1052.8  | 1242.5    | **15% faster** |
+| EAN-13      | 1108.1  | 1338.5    | **17% faster** |
+| UPC-A       | 1118.4  | 1350.5    | **17% faster** |
+| Code 128    | 2203.8  | 2591.3    | **15% faster** |
 
 #### `read_barcodes()` - Multiple Barcode Detection
 
 | Format      | pyrxing | zxing-cpp | Difference |
 |-------------|---------|-----------|------------|
-| Micro QR    | 470.8   | 471.9     | **0% faster** |
-| rMQR        | 539.0   | 542.1     | **1% faster** |
-| Aztec       | 649.1   | 652.6     | **1% faster** |
-| DataBar Ltd.| 741.3   | 741.8     | **0% faster** |
-| DataBar     | 781.7   | 782.1     | **0% faster** |
-| PDF417      | 990.1   | 1024.5    | **3% faster** |
-| Code 93     | 1091.8  | 1095.1    | **0% faster** |
-| Data Matrix | 1142.0  | 1223.8    | **7% faster** |
-| ITF         | 1208.8  | 1277.6    | **5% faster** |
-| Codabar     | 1437.5  | 1490.8    | **4% faster** |
-| DataBar Exp.| 1508.9  | 1508.9    | **0% faster** |
-| DX Film Edge| 1509.2  | 1835.6    | **18% faster** |
-| UPC-E       | 2159.3  | 2405.4    | **10% faster** |
-| QR Code     | 2477.5  | 2484.5    | **0% faster** |
-| MaxiCode    | 2821.3  | 2910.4    | **3% faster** |
-| EAN-8       | 2964.1  | 3211.3    | **8% faster** |
-| Code 39     | 3423.3  | 3621.0    | **5% faster** |
-| UPC-A       | 4796.1  | 5359.9    | **11% faster** |
-| EAN-13      | 4888.4  | 5377.9    | **9% faster** |
-| Code 128    | 8671.9  | 9107.1    | **5% faster** |
+| Micro QR    | 298.1   | 299.6     | **1% faster** |
+| rMQR        | 331.5   | 332.4     | **0% faster** |
+| Aztec       | 390.7   | 402.4     | **3% faster** |
+| DataBar Ltd.| 532.1   | 537.5     | **1% faster** |
+| DataBar     | 544.4   | 548.9     | **1% faster** |
+| Data Matrix | 666.0   | 746.5     | **11% faster** |
+| PDF417      | 713.5   | 745.7     | **4% faster** |
+| Code 93     | 767.4   | 777.0     | **1% faster** |
+| ITF         | 826.2   | 892.8     | **7% faster** |
+| Codabar     | 1017.2  | 1081.4    | **6% faster** |
+| DataBar Exp.| 1137.0  | 1149.2    | **1% faster** |
+| DX Film Edge| 1260.6  | 1321.0    | **5% faster** |
+| QR Code     | 1298.9  | 1308.1    | **1% faster** |
+| UPC-E       | 1364.5  | 1490.9    | **8% faster** |
+| EAN-8       | 1789.6  | 1968.2    | **9% faster** |
+| MaxiCode    | 1946.3  | 2068.9    | **6% faster** |
+| Code 39     | 2291.9  | 2476.1    | **7% faster** |
+| UPC-A       | 3055.7  | 3299.7    | **7% faster** |
+| EAN-13      | 3147.5  | 3389.3    | **7% faster** |
+| Code 128    | 5925.8  | 6291.1    | **6% faster** |
 
 ### Benchmark Environment
 
-- **OS**: macOS Sequoia 15.2 (Apple Silicon)
+- **OS**: macOS Tahoe 26.5.2 (Apple Silicon)
 - **CPU**: Apple M1 Max
 - **Python**: 3.13.10
-- **Libraries**: pyrxing 0.4.4 (zxing-cpp 0.5.0), zxing-cpp 3.0.0, Pillow 12.1.1
-- **Method**: Median of 100 runs with 20-run warm-up
+- **Libraries**: pyrxing 0.8.0 (zxing-cpp 0.5.3), zxing-cpp 3.1.1, Pillow 12.3.0
+- **Method**: Median of 100 runs with 20-run warm-up, faster of two runs
 
 **Test Images**: Located in [`assets/`](assets/) directory:
 - 1D Barcodes: `test_codabar.png`, `test_code39.png`, `test_code93.png`, `test_code128.png`, `test_ean8.png`, `test_ean13.png`, `test_itf.png`, `test_upc_a.png`, `test_upc_e.png`, `test_data_bar.png`, `test_data_bar_expanded.png`, `test_data_bar_limited.png`
